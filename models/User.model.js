@@ -55,14 +55,15 @@ const userSchema = new mongoose.Schema({
     enum: ['pending', 'approved', 'rejected'],
     default: 'pending'
   },
-  onboardingCompleted: {
-    type: Boolean,
-    default: false
+  aprobadoPor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    select: false
   },
-  // Campos adicionales del onboarding
-  intereses: {
-    type: [String],
-    default: []
+  rechazadoPor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    select: false
   },
   segmentoPublico: {
     type: String,

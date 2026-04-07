@@ -98,6 +98,8 @@ export const approveUser = async (req, res) => {
     }
 
     user.estado = 'approved';
+    user.aprobadoPor = req.user._id;
+    user.rechazadoPor = undefined;
     await user.save();
 
     res.json({
@@ -124,6 +126,8 @@ export const rejectUser = async (req, res) => {
     }
 
     user.estado = 'rejected';
+    user.aprobadoPor = undefined;
+    user.rechazadoPor = req.user._id;
     await user.save();
 
     res.json({
@@ -205,6 +209,16 @@ export const updateUser = async (req, res) => {
     if (comoSeEntero !== undefined) user.comoSeEntero = comoSeEntero;
     if (estado && ['pending', 'approved', 'rejected'].includes(estado)) {
       user.estado = estado;
+      if (estado === 'approved') {
+        user.aprobadoPor = req.user._id;
+        user.rechazadoPor = undefined;
+      } else if (estado === 'rejected') {
+        user.aprobadoPor = undefined;
+        user.rechazadoPor = req.user._id;
+      } else {
+        user.aprobadoPor = undefined;
+        user.rechazadoPor = undefined;
+      }
     }
 
     await user.save();
