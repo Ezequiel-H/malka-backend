@@ -122,6 +122,38 @@ describe('admin user routes', () => {
       .send({ password: 'hackeo123' });
     expect(res.status).toBe(403);
   });
+
+  it('PUT /api/users/:id/password rejects short password', async () => {
+    const res = await request(app)
+      .put(`/api/users/${participantApproved._id}/password`)
+      .set('Authorization', bearerFor(admin))
+      .send({ password: '12345' });
+    expect(res.status).toBe(400);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+  });
+
+  it('PUT /api/users/:id/password requires auth', async () => {
+    const res = await request(app)
+      .put(`/api/users/${participantApproved._id}/password`)
+      .send({ password: 'validpass1' });
+    expect(res.status).toBe(401);
+  });
+
+  it('PUT /api/users/:id/password returns 400 for invalid id', async () => {
+    const res = await request(app)
+      .put('/api/users/not-a-valid-id/password')
+      .set('Authorization', bearerFor(admin))
+      .send({ password: 'validpass1' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /api/users/:id/password returns 404 for unknown user', async () => {
+    const res = await request(app)
+      .put('/api/users/507f1f77bcf86cd799439011/password')
+      .set('Authorization', bearerFor(admin))
+      .send({ password: 'validpass1' });
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('participant profile', () => {
