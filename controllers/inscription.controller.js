@@ -2,6 +2,7 @@ import Inscription from '../models/Inscription.model.js';
 import Activity from '../models/Activity.model.js';
 import User from '../models/User.model.js';
 import { calculateOccurrences } from '../utils/generateOccurrences.js';
+import { participantActivityAccessDenied } from '../utils/participantActivityAccess.js';
 
 /**
  * Obtiene las fechas disponibles para inscribirse a una actividad recurrente
@@ -21,6 +22,11 @@ export const getAvailableDates = async (req, res) => {
     // Verificar que la actividad está publicada
     if (activity.estado !== 'publicada') {
       return res.status(400).json({ message: 'La actividad no está disponible para inscripción' });
+    }
+
+    const accessDenied = participantActivityAccessDenied(req, activity);
+    if (accessDenied) {
+      return res.status(accessDenied.status).json(accessDenied.body);
     }
 
     // Obtener todas las inscripciones futuras del usuario para esta actividad
@@ -151,13 +157,9 @@ export const createInscription = async (req, res) => {
       return res.status(400).json({ message: 'La actividad no está disponible para inscripción' });
     }
 
-    // Verificar visibilidad por tags
-    if (activity.tagsVisibilidad && activity.tagsVisibilidad.length > 0) {
-      const userTags = req.user.tags || [];
-      const hasRequiredTag = activity.tagsVisibilidad.some(tag => userTags.includes(tag));
-      if (!hasRequiredTag) {
-        return res.status(403).json({ message: 'No tienes acceso a esta actividad' });
-      }
+    const accessDenied = participantActivityAccessDenied(req, activity);
+    if (accessDenied) {
+      return res.status(accessDenied.status).json(accessDenied.body);
     }
 
     // Validar fecha

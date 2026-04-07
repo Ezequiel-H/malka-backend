@@ -1,6 +1,7 @@
 import Activity from '../models/Activity.model.js';
 import Inscription from '../models/Inscription.model.js';
 import User from '../models/User.model.js';
+import { participantCanViewActivity, participantActivityAccessDenied } from '../utils/participantActivityAccess.js';
 import { validationResult } from 'express-validator';
 import ExcelJS from 'exceljs';
 import { calculateNextOccurrence, calculateOccurrences } from '../utils/generateOccurrences.js';
@@ -336,24 +337,11 @@ export const getActivities = async (req, res) => {
     // Filtrar actividades nulas (excluidas por filtros)
     activities = activities.filter(a => a !== null);
 
-    // Filtro de visibilidad por tags (para participantes) - aplicar después de obtener actividades
+    // Participantes: tagsVisibilidad restringe siempre la vista (pública o privada); otras reglas en participantCanViewActivity
     if (req.user.role === 'participant') {
-      const userTags = (req.user.tags || []).map(tag => tag.toLowerCase());
-      activities = activities.filter(activity => {
-        // Actividades públicas siempre se muestran
-        if (activity.visibilidad === 'publica') {
-          return true;
-        }
-        // Actividades privadas solo si el usuario tiene al menos una tag requerida
-        if (activity.visibilidad === 'privada') {
-          if (!activity.tagsVisibilidad || activity.tagsVisibilidad.length === 0) {
-            return false; // Si es privada pero no tiene tags, no se muestra
-          }
-          const activityTagsLower = (activity.tagsVisibilidad || []).map(tag => tag.toLowerCase());
-          return activityTagsLower.some(tag => userTags.includes(tag));
-        }
-        return true; // Por defecto, mostrar (por si acaso hay un valor inesperado)
-      });
+      activities = activities.filter((activity) =>
+        participantCanViewActivity(req.user, activity)
+      );
     }
 
     // Filtro de cupo (post-query para calcular disponibilidad)
@@ -442,25 +430,14 @@ export const getActivityById = async (req, res) => {
       return res.status(404).json({ message: 'Actividad no encontrada' });
     }
 
-    // Verificar visibilidad para participantes
     if (req.user.role === 'participant') {
       if (activity.estado !== 'publicada') {
         return res.status(404).json({ message: 'Actividad no encontrada' });
       }
-      // Si la actividad es privada, verificar que el usuario tenga las tags requeridas
-      if (activity.visibilidad === 'privada') {
-        if (!activity.tagsVisibilidad || activity.tagsVisibilidad.length === 0) {
-          // Si es privada pero no tiene tags, no se muestra a nadie
-          return res.status(403).json({ message: 'No tienes acceso a esta actividad' });
-        }
-        const userTags = (req.user.tags || []).map(tag => tag.toLowerCase());
-        const activityTagsLower = (activity.tagsVisibilidad || []).map(tag => tag.toLowerCase());
-        const hasRequiredTag = activityTagsLower.some(tag => userTags.includes(tag));
-        if (!hasRequiredTag) {
-          return res.status(403).json({ message: 'No tienes acceso a esta actividad' });
-        }
+      const denied = participantActivityAccessDenied(req, activity);
+      if (denied) {
+        return res.status(denied.status).json(denied.body);
       }
-      // Si es pública, se permite el acceso sin verificar tags
     }
 
     // Calcular cupos disponibles

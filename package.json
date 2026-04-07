@@ -9,23 +9,32 @@
     "dev": "nodemon server.js",
     "create-admin": "node scripts/createAdmin.js",
     "db:init": "node scripts/initDb.js",
-    "db:unset-categorias-artisticas": "node scripts/unsetCategoriasArtisticas.js"
+    "db:unset-categorias-artisticas": "node scripts/unsetCategoriasArtisticas.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
-  "keywords": ["events", "cultural-center", "api"],
+  "keywords": [
+    "events",
+    "cultural-center",
+    "api"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.18.2",
-    "mongoose": "^8.0.3",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "dotenv": "^16.3.1",
     "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
+    "express": "^4.18.2",
     "express-validator": "^7.0.1",
-    "multer": "^1.4.5-lts.1",
-    "exceljs": "^4.4.0"
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.0.3",
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "mongodb-memory-server": "^9.5.0",
+    "nodemon": "^3.0.2",
+    "supertest": "^7.2.2",
+    "vitest": "^2.1.9"
   }
 }
