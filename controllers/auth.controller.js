@@ -1,6 +1,10 @@
 import User from '../models/User.model.js';
 import { generateToken } from '../utils/generateToken.js';
 import { validationResult } from 'express-validator';
+import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
+
+const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
 
 export const register = async (req, res) => {
   try {
@@ -9,23 +13,44 @@ export const register = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password, nombre, apellido, telefono, restriccionesAlimentarias, comoSeEntero } = req.body;
+    const {
+      email,
+      password,
+      nombre,
+      apellido,
+      dni,
+      telefono,
+      restriccionesAlimentarias,
+      comoSeEntero,
+      tags
+    } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'El email ya está registrado' });
+    const dniNorm = normalizeDni(dni);
+    const telNorm = normalizePhone(telefono);
+    const tagsList = Array.isArray(tags) ? tags : [];
+
+    const emailLower = email.toLowerCase().trim();
+    if (await User.findOne({ email: emailLower })) {
+      return res.status(409).json({ message: 'El email ya está registrado' });
+    }
+    if (await User.findOne({ dni: dniNorm })) {
+      return res.status(409).json({ message: 'Ya existe una cuenta con ese DNI.' });
+    }
+    if (await User.findOne({ telefono: telNorm })) {
+      return res.status(409).json({ message: 'Ya existe una cuenta con ese teléfono.' });
     }
 
-    // Create new user
     const user = new User({
       email,
       password,
       nombre,
       apellido,
-      telefono,
+      dni: dniNorm,
+      telefono: telNorm,
       restriccionesAlimentarias: restriccionesAlimentarias || [],
-      comoSeEntero: comoSeEntero || ''
+      comoSeEntero: comoSeEntero || '',
+      tags: tagsList,
+      onboardingCompleted: true
     });
 
     await user.save();
@@ -40,12 +65,19 @@ export const register = async (req, res) => {
         email: user.email,
         nombre: user.nombre,
         apellido: user.apellido,
+        dni: user.dni,
+        telefono: user.telefono,
         role: user.role,
-        estado: user.estado
+        estado: user.estado,
+        tags: user.tags
       }
     });
   } catch (error) {
     console.error('Error en registro:', error);
+    const dupMsg = messageFromMongoDuplicate(error);
+    if (dupMsg) {
+      return res.status(409).json({ message: dupMsg });
+    }
     res.status(500).json({ message: 'Error al registrar usuario', error: error.message });
   }
 };
@@ -59,13 +91,11 @@ export const login = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Find user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(401).json({ message: 'Credenciales inválidas' });
     }
 
-    // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Credenciales inválidas' });
@@ -101,4 +131,3 @@ export const getCurrentUser = async (req, res) => {
     res.status(500).json({ message: 'Error al obtener usuario', error: error.message });
   }
 };
-

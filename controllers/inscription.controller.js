@@ -436,6 +436,69 @@ export const rejectInscription = async (req, res) => {
   }
 };
 
+export const updateInscriptionStatus = async (req, res) => {
+  try {
+    const { estado } = req.body;
+    const { id } = req.params;
+
+    // Validar estado
+    const validStates = ['pendiente', 'aceptada', 'cancelada', 'en_espera'];
+    if (!validStates.includes(estado)) {
+      return res.status(400).json({ message: 'Estado inválido' });
+    }
+
+    const inscription = await Inscription.findById(id);
+    
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+
+    // Si se está aprobando, verificar cupo
+    if (estado === 'aceptada' && inscription.estado !== 'aceptada') {
+      const activity = await Activity.findById(inscription.activityId);
+      if (activity && activity.cupo) {
+        const fechaStart = new Date(inscription.fecha);
+        fechaStart.setUTCHours(0, 0, 0, 0);
+        const fechaEnd = new Date(inscription.fecha);
+        fechaEnd.setUTCHours(23, 59, 59, 999);
+
+        const inscriptionsCount = await Inscription.countDocuments({
+          activityId: inscription.activityId,
+          fecha: { $gte: fechaStart, $lte: fechaEnd },
+          estado: { $in: ['pendiente', 'aceptada'] },
+          _id: { $ne: inscription._id }
+        });
+
+        if (inscriptionsCount >= activity.cupo) {
+          return res.status(400).json({ message: 'No hay cupo disponible para esta fecha' });
+        }
+      }
+      inscription.fechaAprobacion = new Date();
+    }
+
+    // Actualizar estado y fechas relacionadas
+    inscription.estado = estado;
+    
+    if (estado === 'cancelada' && !inscription.fechaCancelacion) {
+      inscription.fechaCancelacion = new Date();
+    }
+    
+    if (estado !== 'aceptada') {
+      inscription.fechaAprobacion = null;
+    }
+
+    await inscription.save();
+
+    res.json({
+      message: `Estado actualizado a ${estado}`,
+      inscription
+    });
+  } catch (error) {
+    console.error('Error al actualizar estado de inscripción:', error);
+    res.status(500).json({ message: 'Error al actualizar estado', error: error.message });
+  }
+};
+
 /**
  * Obtiene las inscripciones futuras del usuario para una actividad específica
  */

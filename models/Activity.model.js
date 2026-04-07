@@ -141,6 +141,10 @@ const activitySchema = new mongoose.Schema({
   tagsVisibilidad: {
     type: [String], // Tags requeridos para ver esta actividad
     default: []
+  },
+  tagsPrivados: {
+    type: [String],
+    default: []
   }
 }, {
   timestamps: true

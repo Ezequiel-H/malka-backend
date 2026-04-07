@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "create-admin": "node scripts/createAdmin.js"
+    "create-admin": "node scripts/createAdmin.js",
+    "db:init": "node scripts/initDb.js",
+    "db:unset-categorias-artisticas": "node scripts/unsetCategoriasArtisticas.js"
   },
   "keywords": ["events", "cultural-center", "api"],
   "author": "",

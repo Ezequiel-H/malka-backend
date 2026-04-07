@@ -8,7 +8,8 @@ import {
   rejectInscription,
   getAllInscriptions,
   getAvailableDates,
-  getUserActivityInscriptions
+  getUserActivityInscriptions,
+  updateInscriptionStatus
 } from '../controllers/inscription.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAdmin, requireApproved } from '../middleware/auth.middleware.js';
@@ -27,6 +28,7 @@ router.get('/', authenticate, requireAdmin, getAllInscriptions);
 router.get('/activity/:activityId', authenticate, requireAdmin, getActivityInscriptions);
 router.put('/:id/approve', authenticate, requireAdmin, approveInscription);
 router.put('/:id/reject', authenticate, requireAdmin, rejectInscription);
+router.put('/:id/status', authenticate, requireAdmin, updateInscriptionStatus);
 
 export default router;
 

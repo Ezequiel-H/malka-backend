@@ -5,8 +5,7 @@ import {
   getTagById,
   createTag,
   updateTag,
-  deleteTag,
-  getTagUsage
+  deleteTag
 } from '../controllers/tag.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAdmin } from '../middleware/auth.middleware.js';
@@ -21,12 +20,18 @@ const tagValidation = [
   body('activa').optional().isBoolean()
 ];
 
+const tagUpdateValidation = [
+  body('nombre').optional().notEmpty().trim(),
+  body('descripcion').optional().trim(),
+  body('color').optional().trim(),
+  body('activa').optional().isBoolean()
+];
+
 // Admin routes - todas requieren autenticación y rol admin
 router.get('/', authenticate, requireAdmin, getTags);
 router.get('/:id', authenticate, requireAdmin, getTagById);
-router.get('/:id/usage', authenticate, requireAdmin, getTagUsage);
 router.post('/', authenticate, requireAdmin, tagValidation, createTag);
-router.put('/:id', authenticate, requireAdmin, tagValidation, updateTag);
+router.put('/:id', authenticate, requireAdmin, tagUpdateValidation, updateTag);
 router.delete('/:id', authenticate, requireAdmin, deleteTag);
 
 export default router;

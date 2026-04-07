@@ -25,11 +25,23 @@ const userSchema = new mongoose.Schema({
     required: [true, 'El apellido es requerido'],
     trim: true
   },
+  dni: {
+    type: String,
+    trim: true,
+    sparse: true,
+    unique: true
+  },
   telefono: {
     type: String,
-    trim: true
+    trim: true,
+    sparse: true,
+    unique: true
   },
   tags: {
+    type: [String],
+    default: []
+  },
+  tagsPrivados: {
     type: [String],
     default: []
   },
@@ -52,10 +64,6 @@ const userSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-  categoriasArtisticas: {
-    type: [String],
-    default: []
-  },
   segmentoPublico: {
     type: String,
     trim: true
@@ -74,6 +82,13 @@ const userSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
+});
+
+// Evitar documentos con string vacío en campos únicos (solo un "" permitido sin sparse behavior claro)
+userSchema.pre('validate', function(next) {
+  if (this.telefono === '') this.telefono = undefined;
+  if (this.dni === '') this.dni = undefined;
+  next();
 });
 
 // Hash password before saving

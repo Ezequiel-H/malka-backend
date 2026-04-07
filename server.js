@@ -15,6 +15,7 @@ import userRoutes from './routes/user.routes.js';
 import activityRoutes from './routes/activity.routes.js';
 import inscriptionRoutes from './routes/inscription.routes.js';
 import tagRoutes from './routes/tag.routes.js';
+import privateTagRoutes from './routes/privateTag.routes.js';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/inscriptions', inscriptionRoutes);
 app.use('/api/tags', tagRoutes);
+app.use('/api/tags-privados', privateTagRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
