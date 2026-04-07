@@ -7,8 +7,11 @@ export const getTags = async (req, res) => {
   try {
     const { activa } = req.query;
     const query = {};
-    
-    if (activa !== undefined) {
+    const isAdmin = req.user?.role === 'admin';
+
+    if (!isAdmin) {
+      query.activa = true;
+    } else if (activa !== undefined) {
       query.activa = activa === 'true';
     }
 
@@ -24,6 +27,9 @@ export const getTagById = async (req, res) => {
   try {
     const tag = await Tag.findById(req.params.id);
     if (!tag) {
+      return res.status(404).json({ message: 'Tag no encontrada' });
+    }
+    if (req.user?.role !== 'admin' && !tag.activa) {
       return res.status(404).json({ message: 'Tag no encontrada' });
     }
     res.json({ tag });

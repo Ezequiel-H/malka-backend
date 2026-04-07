@@ -27,9 +27,9 @@ const tagUpdateValidation = [
   body('activa').optional().isBoolean()
 ];
 
-// Admin routes - todas requieren autenticación y rol admin
-router.get('/', authenticate, requireAdmin, getTags);
-router.get('/:id', authenticate, requireAdmin, getTagById);
+// Lectura del catálogo público: cualquier usuario autenticado (participantes eligen intereses).
+router.get('/', authenticate, getTags);
+router.get('/:id', authenticate, getTagById);
 router.post('/', authenticate, requireAdmin, tagValidation, createTag);
 router.put('/:id', authenticate, requireAdmin, tagUpdateValidation, updateTag);
 router.delete('/:id', authenticate, requireAdmin, deleteTag);
