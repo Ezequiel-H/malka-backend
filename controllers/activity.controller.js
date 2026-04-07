@@ -78,7 +78,6 @@ export const getActivities = async (req, res) => {
       precioMin,
       precioMax,
       tieneCupo,
-      tagsVisibilidad,
       search
     } = req.query;
 
@@ -337,7 +336,7 @@ export const getActivities = async (req, res) => {
     // Filtrar actividades nulas (excluidas por filtros)
     activities = activities.filter(a => a !== null);
 
-    // Participantes: tagsVisibilidad restringe siempre la vista (pública o privada); otras reglas en participantCanViewActivity
+    // Participantes: tagsPrivados restringe siempre la vista (pública o privada); otras reglas en participantCanViewActivity
     if (req.user.role === 'participant') {
       activities = activities.filter((activity) =>
         participantCanViewActivity(req.user, activity)

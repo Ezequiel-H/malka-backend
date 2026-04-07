@@ -131,13 +131,13 @@ export const deleteTag = async (req, res) => {
     
     // Obtener todas las actividades y usuarios y filtrar manualmente
     const [allActivities, allUsers] = await Promise.all([
-      Activity.find({}).select('tagsVisibilidad'),
+      Activity.find({}).select('categorias'),
       User.find({}).select('tags')
     ]);
     
     const activitiesUsingTag = allActivities.filter(activity => {
-      if (!activity.tagsVisibilidad || activity.tagsVisibilidad.length === 0) return false;
-      return activity.tagsVisibilidad.some(t => tagRegex.test(t));
+      if (!activity.categorias || activity.categorias.length === 0) return false;
+      return activity.categorias.some(t => tagRegex.test(t));
     }).length;
     
     const usersUsingTag = allUsers.filter(user => {

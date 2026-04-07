@@ -104,13 +104,13 @@ describe('GET /api/activities/:id', () => {
   });
 });
 
-describe('participant access: actividad privada + tagsVisibilidad', () => {
+describe('participant access: actividad privada + tagsPrivados', () => {
   it('no lista la actividad si el participante no tiene ningún tag requerido', async () => {
     await createActivity(admin._id, {
       titulo: 'Evento solo etiquetados',
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       fecha: futureDate()
     });
 
@@ -135,7 +135,7 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
       titulo: 'Evento VIP',
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       fecha: futureDate()
     });
 
@@ -159,7 +159,7 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       fecha: futureDate()
     });
 
@@ -182,7 +182,7 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       fecha: futureDate()
     });
 
@@ -202,12 +202,12 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
     expect(String(res.body.activity._id)).toBe(String(act._id));
   });
 
-  it('actividad pública con tagsVisibilidad: otro tag no alcanza para verla en cartelera', async () => {
+  it('actividad pública con tagsPrivados: otro tag no alcanza para verla en cartelera', async () => {
     await createActivity(admin._id, {
       titulo: 'Solo socios público',
       estado: 'publicada',
       visibilidad: 'publica',
-      tagsVisibilidad: ['socio'],
+      tagsPrivados: ['socio'],
       fecha: futureDate()
     });
 
@@ -227,12 +227,12 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
     expect(res.body.activities.some((a) => a.titulo === 'Solo socios público')).toBe(false);
   });
 
-  it('actividad pública con tagsVisibilidad: con el tag correcto aparece en cartelera', async () => {
+  it('actividad pública con tagsPrivados: con el tag correcto aparece en cartelera', async () => {
     const act = await createActivity(admin._id, {
       titulo: 'Solo socios público 2',
       estado: 'publicada',
       visibilidad: 'publica',
-      tagsVisibilidad: ['socio'],
+      tagsPrivados: ['socio'],
       fecha: futureDate()
     });
 
@@ -256,7 +256,7 @@ describe('participant access: actividad privada + tagsVisibilidad', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'publica',
-      tagsVisibilidad: ['socio'],
+      tagsPrivados: ['socio'],
       fecha: futureDate()
     });
 

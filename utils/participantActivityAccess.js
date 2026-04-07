@@ -1,7 +1,7 @@
 /**
  * Reglas para participantes aprobados y actividades publicadas:
  * - Pública sin tags de acceso → visible para todos.
- * - Con tagsVisibilidad → solo quien tenga al menos un tag (case-insensitive).
+ * - Con tagsPrivados → solo quien tenga al menos un tag (case-insensitive).
  * - Privada sin tags configurados → no visible (config inválida).
  */
 
@@ -9,7 +9,7 @@ export function participantCanViewActivity(user, activity) {
   if (!user || user.role !== 'participant') return true;
 
   const userTags = (user.tags || []).map((t) => String(t).toLowerCase());
-  const required = (activity.tagsVisibilidad || []).map((t) => String(t).toLowerCase());
+  const required = (activity.tagsPrivados || []).map((t) => String(t).toLowerCase());
 
   if (activity.visibilidad === 'privada' && required.length === 0) {
     return false;

@@ -94,7 +94,7 @@ describe('GET available-dates', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       tipo: 'unica',
       fecha: new Date(Date.UTC(2031, 9, 1, 12, 0, 0, 0)),
       cupo: 10
@@ -116,7 +116,7 @@ describe('GET available-dates', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       tipo: 'unica',
       fecha: new Date(Date.UTC(2031, 9, 2, 12, 0, 0, 0)),
       cupo: 10
@@ -128,11 +128,11 @@ describe('GET available-dates', () => {
     expect(res.body.availableDates.length).toBeGreaterThan(0);
   });
 
-  it('public activity with tagsVisibilidad: no access without matching tag (dates and inscription)', async () => {
+  it('public activity with tagsPrivados: no access without matching tag (dates and inscription)', async () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'publica',
-      tagsVisibilidad: ['socio'],
+      tagsPrivados: ['socio'],
       tipo: 'unica',
       fecha: new Date(Date.UTC(2031, 10, 5, 12, 0, 0, 0))
     });
@@ -163,7 +163,7 @@ describe('POST /api/inscriptions', () => {
   it('403 when visibility tags not satisfied', async () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
-      tagsVisibilidad: ['other-only']
+      tagsPrivados: ['other-only']
     });
     const res = await request(app)
       .post('/api/inscriptions')
@@ -179,7 +179,7 @@ describe('POST /api/inscriptions', () => {
     const act = await createActivity(admin._id, {
       estado: 'publicada',
       visibilidad: 'privada',
-      tagsVisibilidad: ['vip'],
+      tagsPrivados: ['vip'],
       fecha: new Date(Date.UTC(2032, 1, 20, 12, 0, 0, 0))
     });
     const res = await request(app)

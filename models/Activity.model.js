@@ -138,10 +138,6 @@ const activitySchema = new mongoose.Schema({
     enum: ['publica', 'privada'],
     default: 'publica'
   },
-  tagsVisibilidad: {
-    type: [String], // Tags requeridos para ver esta actividad
-    default: []
-  },
   tagsPrivados: {
     type: [String],
     default: []

@@ -118,15 +118,13 @@ export const deletePrivateTag = async (req, res) => {
     const tagRegex = new RegExp(`^${tagNombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
     const [allActivities, allUsers] = await Promise.all([
-      Activity.find({}).select('tagsVisibilidad tagsPrivados'),
+      Activity.find({}).select('tagsPrivados'),
       User.find({}).select('tagsPrivados')
     ]);
 
     const activitiesUsingTag = allActivities.filter((activity) => {
-      const vis = activity.tagsVisibilidad || [];
       const priv = activity.tagsPrivados || [];
-      const combined = [...vis, ...priv];
-      return combined.some((t) => tagRegex.test(t));
+      return priv.some((t) => tagRegex.test(t));
     }).length;
 
     const usersUsingTag = allUsers.filter((user) => {
