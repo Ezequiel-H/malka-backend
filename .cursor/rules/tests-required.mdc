@@ -1,0 +1,32 @@
+---
+description: Exigir tests unitarios para nuevas features y bugfixes (Vitest)
+alwaysApply: true
+---
+
+# Tests obligatorios para features y bugfixes
+
+- **Definition of Done**: cualquier **nueva feature** o **bugfix** NO está terminada si no incluye **tests unitarios** que cubran el cambio (casos felices + al menos 1 borde/errores relevante).
+- **No inventar frameworks**: usa el/los frameworks ya presentes en el repo:
+  - **Frontend**: Vitest + Testing Library (scripts: `npm test` / `npm run test:watch` en `frontend/`).
+  - **Backend**: Vitest (script: `npm test` / `npm run test:watch` en `backend/`).
+
+## Dónde y cómo escribir los tests (seguir patrones existentes)
+
+- **Frontend**:
+  - Colocar tests siguiendo el patrón configurado: `src/**/*.{test,spec}.{js,jsx,ts,tsx}`.
+  - Reutilizar el setup existente `frontend/src/test/setup.js` (Testing Library + MSW) y, cuando aplique, envolver componentes con `frontend/src/test/AppTestShell.jsx`.
+  - Mockear red con los handlers de `frontend/src/test/msw/` si corresponde (evitar requests reales).
+
+- **Backend**:
+  - Mantener el patrón existente: `backend/test/**/*.test.js`.
+  - Para unit tests, seguir la estructura `backend/test/unit/` y helpers en `backend/test/helpers/`.
+  - Respetar `backend/test/setup.js` (env de test) y evitar dependencias externas no deterministas.
+
+## Reglas de entrega
+
+- **Si cambias comportamiento**: agrega/actualiza tests que fallen antes del fix y pasen después.
+- **Si agregas endpoints o integración**: además de unit tests, considerar tests existentes en `backend/test/integration/` (sin reemplazar los unit tests).
+- **Antes de dar por terminada la tarea**: ejecutar tests del paquete afectado:
+  - `cd frontend && npm test` (si tocaste frontend)
+  - `cd backend && npm test` (si tocaste backend)
+
