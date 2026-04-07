@@ -7,8 +7,7 @@ import {
   updateTag,
   deleteTag
 } from '../controllers/tag.controller.js';
-import { authenticate } from '../middleware/auth.middleware.js';
-import { requireAdmin } from '../middleware/auth.middleware.js';
+import { authenticate, authenticateOptional, requireAdmin } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -27,8 +26,8 @@ const tagUpdateValidation = [
   body('activa').optional().isBoolean()
 ];
 
-// Lectura del catálogo público: cualquier usuario autenticado (participantes eligen intereses).
-router.get('/', authenticate, getTags);
+// Catálogo público: sin token devuelve solo activas; con admin autenticado permite filtrar todas.
+router.get('/', authenticateOptional, getTags);
 router.get('/:id', authenticate, getTagById);
 router.post('/', authenticate, requireAdmin, tagValidation, createTag);
 router.put('/:id', authenticate, requireAdmin, tagUpdateValidation, updateTag);

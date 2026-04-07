@@ -27,11 +27,26 @@ beforeEach(async () => {
 });
 
 describe('GET /api/tags', () => {
-  it('403 for non-admin', async () => {
+  it('non-admin gets only active tags', async () => {
+    await createTag({ nombre: `activa-${Date.now()}`, activa: true });
+    await createTag({ nombre: `inactiva-${Date.now()}`, activa: false });
+
     const res = await request(app)
       .get('/api/tags')
       .set('Authorization', bearerFor(participant));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.tags)).toBe(true);
+    expect(res.body.tags.every(tag => tag.activa === true)).toBe(true);
+  });
+
+  it('public request without token gets only active tags', async () => {
+    await createTag({ nombre: `activa-publica-${Date.now()}`, activa: true });
+    await createTag({ nombre: `inactiva-publica-${Date.now()}`, activa: false });
+
+    const res = await request(app).get('/api/tags?activa=true');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.tags)).toBe(true);
+    expect(res.body.tags.every(tag => tag.activa === true)).toBe(true);
   });
 
   it('admin lists tags', async () => {

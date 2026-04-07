@@ -29,6 +29,27 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
+export const authenticateOptional = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId).select('-password');
+    if (!user) {
+      return next();
+    }
+
+    req.user = user;
+    return next();
+  } catch {
+    // Para endpoints públicos ignoramos token inválido/expirado y continuamos sin usuario.
+    return next();
+  }
+};
+
 export const requireAdmin = (req, res, next) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ message: 'Acceso denegado. Se requieren permisos de administrador' });
