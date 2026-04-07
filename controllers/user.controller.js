@@ -305,6 +305,34 @@ export const updateMyProfile = async (req, res) => {
   }
 };
 
+export const changeUserPassword = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'ID de usuario inválido' });
+    }
+
+    const { password } = req.body;
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    user.password = password;
+    await user.save();
+
+    res.json({ message: 'Contraseña actualizada exitosamente' });
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
+    res.status(500).json({ message: 'Error al cambiar contraseña', error: error.message });
+  }
+};
+
 export const getUsersByTags = async (req, res) => {
   try {
     const { tags } = req.query;

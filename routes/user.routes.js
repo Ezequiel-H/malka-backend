@@ -8,7 +8,8 @@ import {
   updateMyProfile,
   getAllUsers,
   getUserById,
-  getUsersByTags
+  getUsersByTags,
+  changeUserPassword
 } from '../controllers/user.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAdmin } from '../middleware/auth.middleware.js';
@@ -38,6 +39,8 @@ const myProfileValidation = [
   body('comoSeEntero').optional().trim()
 ];
 
+const adminSetPasswordValidation = [body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres')];
+
 // Admin routes
 router.get('/pending', authenticate, requireAdmin, getPendingUsers);
 router.get('/', authenticate, requireAdmin, getAllUsers);
@@ -50,6 +53,13 @@ router.patch('/me', authenticate, myProfileValidation, updateMyProfile);
 router.get('/:id', authenticate, requireAdmin, getUserById);
 router.put('/:id/approve', authenticate, requireAdmin, approveUser);
 router.put('/:id/reject', authenticate, requireAdmin, rejectUser);
+router.put(
+  '/:id/password',
+  authenticate,
+  requireAdmin,
+  adminSetPasswordValidation,
+  changeUserPassword
+);
 router.put('/:id', authenticate, requireAdmin, updateUserValidation, updateUser);
 
 export default router;

@@ -96,6 +96,32 @@ describe('admin user routes', () => {
       .set('Authorization', bearerFor(participantApproved));
     expect(res.status).toBe(403);
   });
+
+  it('PUT /api/users/:id/password updates password (admin only)', async () => {
+    const res = await request(app)
+      .put(`/api/users/${participantApproved._id}/password`)
+      .set('Authorization', bearerFor(admin))
+      .send({ password: 'nuevaClaveSegura1' });
+    expect(res.status).toBe(200);
+
+    const loginOld = await request(app)
+      .post('/api/auth/login')
+      .send({ email: participantApproved.email, password: 'password123' });
+    expect(loginOld.status).not.toBe(200);
+
+    const loginNew = await request(app)
+      .post('/api/auth/login')
+      .send({ email: participantApproved.email, password: 'nuevaClaveSegura1' });
+    expect(loginNew.status).toBe(200);
+  });
+
+  it('participant cannot change another user password', async () => {
+    const res = await request(app)
+      .put(`/api/users/${participantPending._id}/password`)
+      .set('Authorization', bearerFor(participantApproved))
+      .send({ password: 'hackeo123' });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe('participant profile', () => {
