@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import app from '../../app.js';
+import User from '../../models/User.model.js';
 import { connectMemoryMongo, disconnectMemoryMongo, clearCollections } from '../helpers/mongo.js';
 import { createUser, bearerFor } from '../helpers/factories.js';
 
@@ -74,6 +75,11 @@ describe('admin user routes', () => {
       .set('Authorization', bearerFor(admin));
     expect(res.status).toBe(200);
     expect(res.body.user.estado).toBe('approved');
+
+    const updated = await User.findById(participantPending._id)
+      .select('+aprobadoPor +rechazadoPor');
+    expect(String(updated.aprobadoPor)).toBe(String(admin._id));
+    expect(updated.rechazadoPor).toBeFalsy();
   });
 
   it('PUT /api/users/:id/reject', async () => {
@@ -88,6 +94,11 @@ describe('admin user routes', () => {
       .set('Authorization', bearerFor(admin));
     expect(res.status).toBe(200);
     expect(res.body.user.estado).toBe('rejected');
+
+    const updated = await User.findById(u._id)
+      .select('+aprobadoPor +rechazadoPor');
+    expect(updated.aprobadoPor).toBeFalsy();
+    expect(String(updated.rechazadoPor)).toBe(String(admin._id));
   });
 
   it('participant cannot access admin routes', async () => {
