@@ -4,6 +4,7 @@ import User from '../models/User.model.js';
 import Activity from '../models/Activity.model.js';
 import Inscription from '../models/Inscription.model.js';
 import Tag from '../models/Tag.model.js';
+import PrivateTag from '../models/PrivateTag.model.js';
 
 dotenv.config();
 
@@ -12,6 +13,7 @@ const models = [
   { label: 'Activity', model: Activity },
   { label: 'Inscription', model: Inscription },
   { label: 'Tag', model: Tag },
+  { label: 'PrivateTag', model: PrivateTag },
 ];
 
 const main = async () => {
