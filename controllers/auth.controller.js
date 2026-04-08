@@ -5,6 +5,12 @@ import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
 
 const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const sanitizeUserForParticipant = (userDoc) => {
+  const user = typeof userDoc?.toObject === 'function' ? userDoc.toObject() : userDoc;
+  if (!user) return user;
+  const { tagsPrivados, ...rest } = user;
+  return rest;
+};
 
 export const register = async (req, res) => {
   try {
@@ -49,8 +55,7 @@ export const register = async (req, res) => {
       telefono: telNorm,
       restriccionesAlimentarias: restriccionesAlimentarias || [],
       comoSeEntero: comoSeEntero || '',
-      tags: tagsList,
-      onboardingCompleted: true
+      tags: tagsList
     });
 
     await user.save();
@@ -125,7 +130,9 @@ export const login = async (req, res) => {
 export const getCurrentUser = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
-    res.json({ user });
+    res.json({
+      user: req.user.role === 'participant' ? sanitizeUserForParticipant(user) : user
+    });
   } catch (error) {
     console.error('Error al obtener usuario:', error);
     res.status(500).json({ message: 'Error al obtener usuario', error: error.message });

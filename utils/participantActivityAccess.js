@@ -8,7 +8,7 @@
 export function participantCanViewActivity(user, activity) {
   if (!user || user.role !== 'participant') return true;
 
-  const userTags = (user.tags || []).map((t) => String(t).toLowerCase());
+  const userTags = (user.tagsPrivados || []).map((t) => String(t).toLowerCase());
   const required = (activity.tagsPrivados || []).map((t) => String(t).toLowerCase());
 
   if (activity.visibilidad === 'privada' && required.length === 0) {

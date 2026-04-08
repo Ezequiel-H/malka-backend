@@ -5,6 +5,12 @@ import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
 
 const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const sanitizeUserForParticipant = (userDoc) => {
+  const user = typeof userDoc?.toObject === 'function' ? userDoc.toObject() : userDoc;
+  if (!user) return user;
+  const { tagsPrivados, ...rest } = user;
+  return rest;
+};
 
 async function assertIdentityAvailable({ excludeUserId, dni, telefono }) {
   const or = [];
@@ -160,7 +166,6 @@ export const updateUser = async (req, res) => {
       telefono,
       tags,
       tagsPrivados,
-      intereses,
       segmentoPublico,
       nivelParticipacion,
       estado,
@@ -200,7 +205,6 @@ export const updateUser = async (req, res) => {
     if (telefono !== undefined) user.telefono = nextTel || undefined;
     if (tags) user.tags = tags;
     if (tagsPrivados !== undefined) user.tagsPrivados = tagsPrivados;
-    if (intereses) user.intereses = intereses;
     if (segmentoPublico !== undefined) user.segmentoPublico = segmentoPublico;
     if (nivelParticipacion !== undefined) user.nivelParticipacion = nivelParticipacion;
     if (restriccionesAlimentarias !== undefined) {
@@ -303,12 +307,13 @@ export const updateMyProfile = async (req, res) => {
     if (tags !== undefined) {
       user.tags = Array.isArray(tags) ? tags : user.tags;
     }
-    user.onboardingCompleted = true;
 
     await user.save();
 
     const fresh = await User.findById(user._id).select('-password');
-    res.json({ user: fresh });
+    res.json({
+      user: req.user.role === 'participant' ? sanitizeUserForParticipant(fresh) : fresh
+    });
   } catch (error) {
     console.error('Error al actualizar perfil:', error);
     const dupMsg = messageFromMongoDuplicate(error);

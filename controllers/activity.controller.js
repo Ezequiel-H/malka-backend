@@ -33,6 +33,12 @@ const parseSimpleDate = (dateString) => {
   return new Date(dateString);
 };
 
+const sanitizeActivityForParticipant = (activity) => {
+  if (!activity) return activity;
+  const { tagsPrivados, ...rest } = activity;
+  return rest;
+};
+
 export const createActivity = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -411,6 +417,11 @@ export const getActivities = async (req, res) => {
           };
         })
       );
+
+      // No exponer tags privados del evento en payload de participante.
+      activities = activities.map((activity) =>
+        sanitizeActivityForParticipant(activity)
+      );
     }
 
     res.json({ activities, count: activities.length });
@@ -452,12 +463,17 @@ export const getActivityById = async (req, res) => {
       cuposDisponibles = Math.max(0, activity.cupo - totalInscriptions);
     }
 
+    const activityPayload = {
+      ...activity.toObject(),
+      cuposDisponibles,
+      cuposOcupados
+    };
+
     res.json({
-      activity: {
-        ...activity.toObject(),
-        cuposDisponibles,
-        cuposOcupados
-      }
+      activity:
+        req.user.role === 'participant'
+          ? sanitizeActivityForParticipant(activityPayload)
+          : activityPayload
     });
   } catch (error) {
     console.error('Error al obtener actividad:', error);
