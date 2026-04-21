@@ -30,7 +30,7 @@ beforeEach(async () => {
     email: 'app-ins@test.local',
     dni: '22222222',
     telefono: '+5411000333222',
-    tags: ['vip']
+    tagsPrivados: ['vip']
   });
   pending = await createUser({
     estado: 'pending',
@@ -104,7 +104,7 @@ describe('GET available-dates', () => {
       email: 'no-tag-dates@test.local',
       dni: '66661111',
       telefono: '+5411666111111',
-      tags: []
+      tagsPrivados: []
     });
     const res = await request(app)
       .get(`/api/inscriptions/activity/${act._id}/available-dates`)
@@ -141,7 +141,7 @@ describe('GET available-dates', () => {
       email: 'solo-vip-pub@test.local',
       dni: '66662222',
       telefono: '+5411666222222',
-      tags: ['vip']
+      tagsPrivados: ['vip']
     });
     const dates = await request(app)
       .get(`/api/inscriptions/activity/${act._id}/available-dates`)

@@ -119,7 +119,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'sin-tags-act@test.local',
       dni: '88881111',
       telefono: '+5411888111111',
-      tags: []
+      tagsPrivados: []
     });
 
     const res = await request(app)
@@ -144,7 +144,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'con-vip-act@test.local',
       dni: '88882222',
       telefono: '+5411888222222',
-      tags: ['VIP']
+      tagsPrivados: ['VIP']
     });
 
     const res = await request(app)
@@ -168,7 +168,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'sin-tags-det@test.local',
       dni: '88883333',
       telefono: '+5411888333333',
-      tags: []
+      tagsPrivados: []
     });
 
     const res = await request(app)
@@ -191,7 +191,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'con-vip-det@test.local',
       dni: '88884444',
       telefono: '+5411888444444',
-      tags: ['vip']
+      tagsPrivados: ['vip']
     });
 
     const res = await request(app)
@@ -216,7 +216,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'pub-socio-wrongtag@test.local',
       dni: '88885555',
       telefono: '+5411888555555',
-      tags: ['vip']
+      tagsPrivados: ['vip']
     });
 
     const res = await request(app)
@@ -241,7 +241,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'pub-socio-ok@test.local',
       dni: '88886666',
       telefono: '+5411888666666',
-      tags: ['socio']
+      tagsPrivados: ['socio']
     });
 
     const res = await request(app)
@@ -265,7 +265,7 @@ describe('participant access: actividad privada + tagsPrivados', () => {
       email: 'pub-det-403@test.local',
       dni: '88887777',
       telefono: '+5411888777777',
-      tags: ['vip']
+      tagsPrivados: ['vip']
     });
 
     const res = await request(app)

@@ -4,7 +4,7 @@ import {
   participantActivityAccessDenied
 } from '../../utils/participantActivityAccess.js';
 
-const participant = (tags) => ({ role: 'participant', tags });
+const participant = (tagsPrivados) => ({ role: 'participant', tagsPrivados });
 const act = (overrides) => ({
   visibilidad: 'publica',
   tagsPrivados: [],
@@ -43,7 +43,7 @@ describe('participantCanViewActivity', () => {
 
 describe('participantActivityAccessDenied', () => {
   it('admin no bloquea', () => {
-    const req = { user: { role: 'admin', tags: [] } };
+    const req = { user: { role: 'admin', tagsPrivados: [] } };
     expect(participantActivityAccessDenied(req, act({ tagsPrivados: ['x'] }))).toBeNull();
   });
 
