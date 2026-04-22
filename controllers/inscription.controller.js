@@ -188,9 +188,11 @@ export const createInscription = async (req, res) => {
     if (existingInscription) {
       if (existingInscription.estado === 'cancelada') {
         // Permitir re-inscripción si estaba cancelada
-        existingInscription.estado = activity.requiereAprobacion ? 'pendiente' : 'aceptada';
+        const nuevoEstado = activity.requiereAprobacion ? 'pendiente' : 'aceptada';
+        existingInscription.estado = nuevoEstado;
         existingInscription.fechaInscripcion = new Date();
         existingInscription.fechaCancelacion = null;
+        existingInscription.fechaAprobacion = nuevoEstado === 'aceptada' ? new Date() : null;
         existingInscription.fecha = fechaInscripcion;
         existingInscription.hora = hora;
         if (notas) existingInscription.notas = notas;
@@ -309,6 +311,27 @@ export const cancelInscription = async (req, res) => {
   } catch (error) {
     console.error('Error al cancelar inscripción:', error);
     res.status(500).json({ message: 'Error al cancelar inscripción', error: error.message });
+  }
+};
+
+/** Inscripciones aceptadas cuya aceptación (fechaAprobacion o, en legado, fechaInscripcion) ocurrió en los últimos 30 días. */
+export const countAcceptedInscriptionsLast30Days = async (req, res) => {
+  try {
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - 30);
+    since.setUTCHours(0, 0, 0, 0);
+
+    const count = await Inscription.countDocuments({
+      estado: 'aceptada',
+      $expr: {
+        $gte: [{ $ifNull: ['$fechaAprobacion', '$fechaInscripcion'] }, since]
+      }
+    });
+
+    res.json({ count });
+  } catch (error) {
+    console.error('Error al contar inscripciones aceptadas recientes:', error);
+    res.status(500).json({ message: 'Error al obtener estadística', error: error.message });
   }
 };
 

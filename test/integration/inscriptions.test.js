@@ -309,4 +309,42 @@ describe('admin inscriptions', () => {
     expect(res.status).toBe(200);
     expect(res.body.inscription.estado).toBe('aceptada');
   });
+
+  it('GET /stats/accepted-last-30-days rejects non-admin', async () => {
+    const res = await request(app)
+      .get('/api/inscriptions/stats/accepted-last-30-days')
+      .set('Authorization', bearerFor(approved));
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /stats/accepted-last-30-days counts aceptadas by fechaAprobacion window', async () => {
+    const actRecent = await createActivity(admin._id, { estado: 'publicada' });
+    const actOld = await createActivity(admin._id, {
+      estado: 'publicada',
+      fecha: new Date(Date.UTC(2032, 3, 1, 12, 0, 0, 0))
+    });
+    const within = new Date();
+    within.setUTCDate(within.getUTCDate() - 5);
+    within.setUTCHours(12, 0, 0, 0);
+    const outside = new Date();
+    outside.setUTCDate(outside.getUTCDate() - 40);
+    outside.setUTCHours(12, 0, 0, 0);
+
+    await createInscription(approved._id, actRecent._id, actRecent.fecha, {
+      estado: 'aceptada',
+      fechaAprobacion: within,
+      fechaInscripcion: within
+    });
+    await createInscription(approved._id, actOld._id, actOld.fecha, {
+      estado: 'aceptada',
+      fechaAprobacion: outside,
+      fechaInscripcion: outside
+    });
+
+    const res = await request(app)
+      .get('/api/inscriptions/stats/accepted-last-30-days')
+      .set('Authorization', bearerFor(admin));
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+  });
 });

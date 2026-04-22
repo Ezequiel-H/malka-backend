@@ -7,6 +7,7 @@ import {
   approveInscription,
   rejectInscription,
   getAllInscriptions,
+  countAcceptedInscriptionsLast30Days,
   getAvailableDates,
   getUserActivityInscriptions,
   updateInscriptionStatus
@@ -24,6 +25,7 @@ router.get('/my', authenticate, requireApproved, getMyInscriptions);
 router.put('/:id/cancel', authenticate, requireApproved, cancelInscription);
 
 // Admin routes
+router.get('/stats/accepted-last-30-days', authenticate, requireAdmin, countAcceptedInscriptionsLast30Days);
 router.get('/', authenticate, requireAdmin, getAllInscriptions);
 router.get('/activity/:activityId', authenticate, requireAdmin, getActivityInscriptions);
 router.put('/:id/approve', authenticate, requireAdmin, approveInscription);

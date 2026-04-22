@@ -9,6 +9,7 @@ import activityRoutes from './routes/activity.routes.js';
 import inscriptionRoutes from './routes/inscription.routes.js';
 import tagRoutes from './routes/tag.routes.js';
 import privateTagRoutes from './routes/privateTag.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +34,7 @@ export function createApp() {
   app.use('/api/inscriptions', inscriptionRoutes);
   app.use('/api/tags', tagRoutes);
   app.use('/api/tags-privados', privateTagRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });
