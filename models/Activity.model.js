@@ -103,6 +103,10 @@ const activitySchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  instruccionesPago: {
+    type: String,
+    trim: true
+  },
   cupo: {
     type: Number,
     min: 0

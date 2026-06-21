@@ -5,6 +5,7 @@ import { participantCanViewActivity, participantActivityAccessDenied } from '../
 import { validationResult } from 'express-validator';
 import ExcelJS from 'exceljs';
 import { calculateNextOccurrence, calculateOccurrences } from '../utils/generateOccurrences.js';
+import { attachInstruccionesPagoResueltas } from '../utils/paymentInstructions.js';
 
 // Helper function to convert date string (YYYY-MM-DD) to Date object
 // Simple conversion: just use the year, month, day as-is, no timezone conversion
@@ -38,6 +39,49 @@ const sanitizeActivityForParticipant = (activity) => {
   const { tagsPrivados, ...rest } = activity;
   return rest;
 };
+
+async function getParticipantInscriptionInfo(userId, activity) {
+  let estadoInscripcion = null;
+  let fechaInscripcion = null;
+
+  if (activity.tipo === 'unica') {
+    if (activity.fecha) {
+      const fechaStart = new Date(activity.fecha);
+      fechaStart.setUTCHours(0, 0, 0, 0);
+      const fechaEnd = new Date(activity.fecha);
+      fechaEnd.setUTCHours(23, 59, 59, 999);
+
+      const inscription = await Inscription.findOne({
+        userId,
+        activityId: activity._id,
+        fecha: { $gte: fechaStart, $lte: fechaEnd },
+        estado: { $in: ['pendiente', 'aceptada', 'en_espera'] }
+      });
+
+      if (inscription) {
+        estadoInscripcion = inscription.estado;
+        fechaInscripcion = inscription.fecha;
+      }
+    }
+  } else if (activity.tipo === 'recurrente') {
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+
+    const inscription = await Inscription.findOne({
+      userId,
+      activityId: activity._id,
+      fecha: { $gte: now },
+      estado: { $in: ['pendiente', 'aceptada', 'en_espera'] }
+    }).sort({ fecha: 1 });
+
+    if (inscription) {
+      estadoInscripcion = inscription.estado;
+      fechaInscripcion = inscription.fecha;
+    }
+  }
+
+  return { estadoInscripcion, fechaInscripcion };
+}
 
 export const createActivity = async (req, res) => {
   try {
@@ -369,46 +413,8 @@ export const getActivities = async (req, res) => {
       const userId = req.user._id;
       activities = await Promise.all(
         activities.map(async (activity) => {
-          let estadoInscripcion = null;
-          let fechaInscripcion = null;
-
-          if (activity.tipo === 'unica') {
-            // Para actividades únicas, verificar inscripción en la fecha específica
-            if (activity.fecha) {
-              const fechaStart = new Date(activity.fecha);
-              fechaStart.setUTCHours(0, 0, 0, 0);
-              const fechaEnd = new Date(activity.fecha);
-              fechaEnd.setUTCHours(23, 59, 59, 999);
-
-              const inscription = await Inscription.findOne({
-                userId: userId,
-                activityId: activity._id,
-                fecha: { $gte: fechaStart, $lte: fechaEnd },
-                estado: { $in: ['pendiente', 'aceptada', 'en_espera'] }
-              });
-
-              if (inscription) {
-                estadoInscripcion = inscription.estado;
-                fechaInscripcion = inscription.fecha;
-              }
-            }
-          } else if (activity.tipo === 'recurrente') {
-            // Para actividades recurrentes, verificar si hay alguna inscripción futura
-            const now = new Date();
-            now.setUTCHours(0, 0, 0, 0);
-
-            const inscription = await Inscription.findOne({
-              userId: userId,
-              activityId: activity._id,
-              fecha: { $gte: now },
-              estado: { $in: ['pendiente', 'aceptada', 'en_espera'] }
-            }).sort({ fecha: 1 }); // Obtener la más próxima
-
-            if (inscription) {
-              estadoInscripcion = inscription.estado;
-              fechaInscripcion = inscription.fecha;
-            }
-          }
+          const { estadoInscripcion, fechaInscripcion } =
+            await getParticipantInscriptionInfo(userId, activity);
 
           return {
             ...activity,
@@ -423,6 +429,10 @@ export const getActivities = async (req, res) => {
         sanitizeActivityForParticipant(activity)
       );
     }
+
+    activities = await Promise.all(
+      activities.map((activity) => attachInstruccionesPagoResueltas(activity))
+    );
 
     res.json({ activities, count: activities.length });
   } catch (error) {
@@ -469,11 +479,20 @@ export const getActivityById = async (req, res) => {
       cuposOcupados
     };
 
+    if (req.user.role === 'participant') {
+      const { estadoInscripcion, fechaInscripcion } =
+        await getParticipantInscriptionInfo(req.user._id, activity);
+      activityPayload.estadoInscripcion = estadoInscripcion;
+      activityPayload.fechaInscripcion = fechaInscripcion;
+    }
+
+    const activityWithPayment = await attachInstruccionesPagoResueltas(activityPayload);
+
     res.json({
       activity:
         req.user.role === 'participant'
-          ? sanitizeActivityForParticipant(activityPayload)
-          : activityPayload
+          ? sanitizeActivityForParticipant(activityWithPayment)
+          : activityWithPayment
     });
   } catch (error) {
     console.error('Error al obtener actividad:', error);

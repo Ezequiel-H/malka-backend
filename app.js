@@ -1,3 +1,4 @@
+import './config/loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
@@ -10,6 +11,7 @@ import inscriptionRoutes from './routes/inscription.routes.js';
 import tagRoutes from './routes/tag.routes.js';
 import privateTagRoutes from './routes/privateTag.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +37,7 @@ export function createApp() {
   app.use('/api/tags', tagRoutes);
   app.use('/api/tags-privados', privateTagRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/settings', settingsRoutes);
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });

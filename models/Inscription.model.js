@@ -37,6 +37,28 @@ const inscriptionSchema = new mongoose.Schema({
   notas: {
     type: String,
     trim: true
+  },
+  pago: {
+    comprobante: {
+      url: String,
+      publicId: String,
+      formato: String,
+      originalName: String
+    },
+    estadoPago: {
+      type: String,
+      enum: ['pendiente', 'aprobado', 'rechazado']
+    },
+    montoEsperado: {
+      type: Number,
+      min: 0
+    },
+    fechaRevision: Date,
+    motivoRechazo: String,
+    revisadoPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }
   }
 }, {
   timestamps: true

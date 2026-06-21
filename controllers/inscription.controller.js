@@ -3,6 +3,44 @@ import Activity from '../models/Activity.model.js';
 import User from '../models/User.model.js';
 import { calculateOccurrences } from '../utils/generateOccurrences.js';
 import { participantActivityAccessDenied } from '../utils/participantActivityAccess.js';
+import { uploadToCloudinary } from '../middleware/upload.middleware.js';
+
+const isPaidActivity = (activity) => activity && activity.esGratuita === false;
+
+const buildPagoFromFile = async (file, activity) => {
+  const comprobante = await uploadToCloudinary(
+    file.buffer,
+    file.originalname,
+    file.mimetype
+  );
+  return {
+    comprobante,
+    estadoPago: 'pendiente',
+    montoEsperado: activity.precio,
+  };
+};
+
+const determineInitialEstado = (activity, cupoFull) => {
+  if (cupoFull) return 'en_espera';
+  if (isPaidActivity(activity)) return 'pendiente';
+  return activity.requiereAprobacion ? 'pendiente' : 'aceptada';
+};
+
+const paidInscriptionMessage = (estado) => {
+  if (estado === 'en_espera') {
+    return 'Cupo completo. Has sido agregado a la lista de espera. Tu comprobante quedará pendiente de revisión.';
+  }
+  return 'Inscripción enviada. Queda pendiente hasta que se apruebe el comprobante de transferencia.';
+};
+
+const freeInscriptionMessage = (activity, estado) => {
+  if (estado === 'en_espera') {
+    return 'Cupo completo. Has sido agregado a la lista de espera.';
+  }
+  return activity.requiereAprobacion
+    ? 'Inscripción realizada. Pendiente de aprobación.'
+    : 'Inscripción realizada exitosamente';
+};
 
 /**
  * Obtiene las fechas disponibles para inscribirse a una actividad recurrente
@@ -162,6 +200,11 @@ export const createInscription = async (req, res) => {
       return res.status(accessDenied.status).json(accessDenied.body);
     }
 
+    const paid = isPaidActivity(activity);
+    if (paid && !req.file) {
+      return res.status(400).json({ message: 'Debes subir un comprobante de transferencia' });
+    }
+
     // Validar fecha
     if (!fecha) {
       return res.status(400).json({ message: 'La fecha es requerida' });
@@ -178,6 +221,11 @@ export const createInscription = async (req, res) => {
       hora = activity.recurrence.hora || activity.hora || '';
     }
 
+    let pagoData = null;
+    if (paid) {
+      pagoData = await buildPagoFromFile(req.file, activity);
+    }
+
     // Verificar si ya está inscrito en esta fecha
     const existingInscription = await Inscription.findOne({ 
       userId, 
@@ -187,8 +235,8 @@ export const createInscription = async (req, res) => {
     
     if (existingInscription) {
       if (existingInscription.estado === 'cancelada') {
-        // Permitir re-inscripción si estaba cancelada
-        const nuevoEstado = activity.requiereAprobacion ? 'pendiente' : 'aceptada';
+        const cupoFull = await isCupoFull(activity, fechaInscripcion, fechaEnd);
+        const nuevoEstado = determineInitialEstado(activity, cupoFull);
         existingInscription.estado = nuevoEstado;
         existingInscription.fechaInscripcion = new Date();
         existingInscription.fechaCancelacion = null;
@@ -196,12 +244,15 @@ export const createInscription = async (req, res) => {
         existingInscription.fecha = fechaInscripcion;
         existingInscription.hora = hora;
         if (notas) existingInscription.notas = notas;
+        if (paid) {
+          existingInscription.pago = pagoData;
+        } else {
+          existingInscription.pago = undefined;
+        }
         await existingInscription.save();
         
         return res.json({
-          message: activity.requiereAprobacion 
-            ? 'Inscripción realizada. Pendiente de aprobación.' 
-            : 'Inscripción realizada exitosamente',
+          message: paid ? paidInscriptionMessage(nuevoEstado) : freeInscriptionMessage(activity, nuevoEstado),
           inscription: existingInscription
         });
       }
@@ -209,33 +260,26 @@ export const createInscription = async (req, res) => {
     }
 
     // Verificar cupo
-    if (activity.cupo) {
-      const inscriptionsCount = await Inscription.countDocuments({
-        activityId: activity._id,
-        fecha: { $gte: fechaInscripcion, $lte: fechaEnd },
-        estado: { $in: ['pendiente', 'aceptada'] }
+    const cupoFull = await isCupoFull(activity, fechaInscripcion, fechaEnd);
+    if (cupoFull && activity.cupo) {
+      const estadoInicial = 'en_espera';
+      const inscription = new Inscription({
+        userId,
+        activityId,
+        fecha: fechaInscripcion,
+        hora: hora,
+        estado: estadoInicial,
+        notas,
+        ...(paid ? { pago: pagoData } : {})
       });
-
-      if (inscriptionsCount >= activity.cupo) {
-        // Crear inscripción en lista de espera
-        const inscription = new Inscription({
-          userId,
-          activityId,
-          fecha: fechaInscripcion,
-          hora: hora,
-          estado: 'en_espera',
-          notas
-        });
-        await inscription.save();
-        return res.json({
-          message: 'Cupo completo. Has sido agregado a la lista de espera.',
-          inscription
-        });
-      }
+      await inscription.save();
+      return res.json({
+        message: paid ? paidInscriptionMessage(estadoInicial) : freeInscriptionMessage(activity, estadoInicial),
+        inscription
+      });
     }
 
-    // Determinar estado inicial según tipo de inscripción
-    const estadoInicial = activity.requiereAprobacion ? 'pendiente' : 'aceptada';
+    const estadoInicial = determineInitialEstado(activity, false);
 
     const inscription = new Inscription({
       userId,
@@ -243,7 +287,8 @@ export const createInscription = async (req, res) => {
       fecha: fechaInscripcion,
       hora: hora,
       estado: estadoInicial,
-      notas
+      notas,
+      ...(paid ? { pago: pagoData } : {})
     });
 
     if (estadoInicial === 'aceptada') {
@@ -253,9 +298,7 @@ export const createInscription = async (req, res) => {
     await inscription.save();
 
     res.status(201).json({
-      message: activity.requiereAprobacion 
-        ? 'Inscripción realizada. Pendiente de aprobación.' 
-        : 'Inscripción realizada exitosamente',
+      message: paid ? paidInscriptionMessage(estadoInicial) : freeInscriptionMessage(activity, estadoInicial),
       inscription
     });
   } catch (error) {
@@ -267,6 +310,16 @@ export const createInscription = async (req, res) => {
   }
 };
 
+async function isCupoFull(activity, fechaInscripcion, fechaEnd) {
+  if (!activity.cupo) return false;
+  const inscriptionsCount = await Inscription.countDocuments({
+    activityId: activity._id,
+    fecha: { $gte: fechaInscripcion, $lte: fechaEnd },
+    estado: { $in: ['pendiente', 'aceptada'] }
+  });
+  return inscriptionsCount >= activity.cupo;
+}
+
 export const getMyInscriptions = async (req, res) => {
   try {
     const { estado } = req.query;
@@ -277,7 +330,7 @@ export const getMyInscriptions = async (req, res) => {
     }
 
     const inscriptions = await Inscription.find(query)
-      .populate('activityId', 'titulo descripcion fecha hora lugar precio fotos categorias tipo')
+      .populate('activityId', 'titulo descripcion fecha hora lugar precio esGratuita fotos categorias tipo')
       .sort({ fechaInscripcion: -1 });
 
     res.json({ inscriptions, count: inscriptions.length });
@@ -332,6 +385,23 @@ export const countAcceptedInscriptionsLast30Days = async (req, res) => {
   } catch (error) {
     console.error('Error al contar inscripciones aceptadas recientes:', error);
     res.status(500).json({ message: 'Error al obtener estadística', error: error.message });
+  }
+};
+
+export const getPendingPaymentInscriptions = async (req, res) => {
+  try {
+    const inscriptions = await Inscription.find({
+      'pago.estadoPago': 'pendiente',
+      'pago.comprobante.url': { $exists: true, $ne: '' }
+    })
+      .populate('userId', 'nombre apellido email telefono')
+      .populate('activityId', 'titulo fecha hora precio esGratuita tipo')
+      .sort({ fechaInscripcion: -1 });
+
+    res.json({ inscriptions, count: inscriptions.length });
+  } catch (error) {
+    console.error('Error al obtener comprobantes pendientes:', error);
+    res.status(500).json({ message: 'Error al obtener comprobantes pendientes', error: error.message });
   }
 };
 
@@ -524,21 +594,178 @@ export const updateInscriptionStatus = async (req, res) => {
   }
 };
 
-/**
- * Obtiene las inscripciones futuras del usuario para una actividad específica
- */
+export const approvePayment = async (req, res) => {
+  try {
+    const inscription = await Inscription.findById(req.params.id);
+
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+
+    if (!inscription.pago?.comprobante?.url) {
+      return res.status(400).json({ message: 'Esta inscripción no tiene comprobante de pago' });
+    }
+
+    if (inscription.pago.estadoPago === 'aprobado') {
+      return res.status(400).json({ message: 'El pago ya fue aprobado' });
+    }
+
+    const activity = await Activity.findById(inscription.activityId);
+    if (activity && activity.cupo) {
+      const fechaStart = new Date(inscription.fecha);
+      fechaStart.setHours(0, 0, 0, 0);
+      const fechaEnd = new Date(inscription.fecha);
+      fechaEnd.setHours(23, 59, 59, 999);
+
+      const inscriptionsCount = await Inscription.countDocuments({
+        activityId: inscription.activityId,
+        fecha: { $gte: fechaStart, $lte: fechaEnd },
+        estado: { $in: ['pendiente', 'aceptada'] },
+        _id: { $ne: inscription._id }
+      });
+
+      if (inscriptionsCount >= activity.cupo) {
+        return res.status(400).json({ message: 'No hay cupo disponible para esta fecha' });
+      }
+    }
+
+    inscription.pago.estadoPago = 'aprobado';
+    inscription.pago.fechaRevision = new Date();
+    inscription.pago.revisadoPor = req.user._id;
+    inscription.pago.motivoRechazo = undefined;
+    inscription.estado = 'aceptada';
+    inscription.fechaAprobacion = new Date();
+    await inscription.save();
+
+    res.json({
+      message: 'Comprobante aprobado. Inscripción confirmada.',
+      inscription
+    });
+  } catch (error) {
+    console.error('Error al aprobar pago:', error);
+    res.status(500).json({ message: 'Error al aprobar pago', error: error.message });
+  }
+};
+
+export const rejectPayment = async (req, res) => {
+  try {
+    const { motivoRechazo } = req.body;
+    const inscription = await Inscription.findById(req.params.id);
+
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+
+    if (!inscription.pago?.comprobante?.url) {
+      return res.status(400).json({ message: 'Esta inscripción no tiene comprobante de pago' });
+    }
+
+    inscription.pago.estadoPago = 'rechazado';
+    inscription.pago.fechaRevision = new Date();
+    inscription.pago.revisadoPor = req.user._id;
+    inscription.pago.motivoRechazo = motivoRechazo?.trim() || '';
+    inscription.estado = 'pendiente';
+    inscription.fechaAprobacion = null;
+    await inscription.save();
+
+    res.json({
+      message: 'Comprobante rechazado. El participante puede volver a subir uno nuevo.',
+      inscription
+    });
+  } catch (error) {
+    console.error('Error al rechazar pago:', error);
+    res.status(500).json({ message: 'Error al rechazar pago', error: error.message });
+  }
+};
+
+export const updateComprobante = async (req, res) => {
+  try {
+    const inscription = await Inscription.findById(req.params.id);
+
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+
+    if (inscription.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'No tienes permisos para actualizar este comprobante' });
+    }
+
+    if (!inscription.pago) {
+      return res.status(400).json({ message: 'Esta inscripción no requiere comprobante de pago' });
+    }
+
+    if (!['pendiente', 'rechazado'].includes(inscription.pago.estadoPago)) {
+      return res.status(400).json({ message: 'No puedes actualizar el comprobante en este estado' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Debes subir un comprobante de transferencia' });
+    }
+
+    const activity = await Activity.findById(inscription.activityId);
+    if (!activity) {
+      return res.status(404).json({ message: 'Actividad no encontrada' });
+    }
+
+    const pagoData = await buildPagoFromFile(req.file, activity);
+    inscription.pago = {
+      ...pagoData,
+      motivoRechazo: undefined,
+      fechaRevision: undefined,
+      revisadoPor: undefined,
+    };
+    inscription.estado = 'pendiente';
+    inscription.fechaAprobacion = null;
+    await inscription.save();
+
+    res.json({
+      message: 'Comprobante actualizado. Queda pendiente de revisión.',
+      inscription
+    });
+  } catch (error) {
+    console.error('Error al actualizar comprobante:', error);
+    res.status(500).json({ message: 'Error al actualizar comprobante', error: error.message });
+  }
+};
+
+export const getComprobanteFile = async (req, res) => {
+  try {
+    const inscription = await Inscription.findById(req.params.id);
+
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+
+    const fileUrl = inscription.pago?.comprobante?.url;
+    if (!fileUrl) {
+      return res.status(404).json({ message: 'Esta inscripción no tiene comprobante de pago' });
+    }
+
+    const upstream = await fetch(fileUrl);
+    if (!upstream.ok) {
+      return res.status(502).json({ message: 'No se pudo obtener el comprobante' });
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'application/pdf';
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    console.error('Error al obtener comprobante:', error);
+    res.status(500).json({ message: 'Error al obtener comprobante', error: error.message });
+  }
+};
+
 export const getUserActivityInscriptions = async (req, res) => {
   try {
     const { activityId } = req.params;
     const userId = req.user._id;
 
-    // Verificar que la actividad existe
     const activity = await Activity.findById(activityId);
     if (!activity) {
       return res.status(404).json({ message: 'Actividad no encontrada' });
     }
 
-    // Obtener inscripciones futuras del usuario para esta actividad
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
@@ -549,17 +776,18 @@ export const getUserActivityInscriptions = async (req, res) => {
       estado: { $in: ['pendiente', 'aceptada', 'en_espera'] }
     })
     .populate('activityId', 'titulo descripcion fecha hora lugar precio fotos categorias tipo')
-    .sort({ fecha: 1 }); // Ordenar por fecha ascendente
+    .sort({ fecha: 1 });
 
-    res.json({ 
-      inscriptions, 
-      count: inscriptions.length 
+    res.json({
+      inscriptions,
+      count: inscriptions.length
     });
   } catch (error) {
     console.error('Error al obtener inscripciones del usuario:', error);
-    res.status(500).json({ 
-      message: 'Error al obtener inscripciones del usuario', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error al obtener inscripciones del usuario',
+      error: error.message
     });
   }
 };
+

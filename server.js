@@ -1,11 +1,9 @@
+import './config/loadEnv.js';
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 import app from './app.js';
-
-dotenv.config();
 
 const execAsync = promisify(exec);
 
