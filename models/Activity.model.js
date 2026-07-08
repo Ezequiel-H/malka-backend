@@ -68,7 +68,7 @@ const activitySchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-  // Para actividades únicas
+  // Para actividades únicas y viajes (fecha/hora de inicio)
   fecha: {
     type: Date
   },
@@ -76,10 +76,18 @@ const activitySchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Para viajes: fecha/hora de finalización
+  fechaFin: {
+    type: Date
+  },
+  horaFin: {
+    type: String,
+    trim: true
+  },
   // Para actividades recurrentes
   tipo: {
     type: String,
-    enum: ['unica', 'recurrente'],
+    enum: ['unica', 'recurrente', 'viaje'],
     required: true,
     default: 'unica'
   },
@@ -98,6 +106,11 @@ const activitySchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0
+  },
+  moneda: {
+    type: String,
+    enum: ['ARS', 'USD'],
+    default: 'ARS'
   },
   esGratuita: {
     type: Boolean,

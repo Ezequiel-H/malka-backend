@@ -44,7 +44,7 @@ async function getParticipantInscriptionInfo(userId, activity) {
   let estadoInscripcion = null;
   let fechaInscripcion = null;
 
-  if (activity.tipo === 'unica') {
+  if (activity.tipo === 'unica' || activity.tipo === 'viaje') {
     if (activity.fecha) {
       const fechaStart = new Date(activity.fecha);
       fechaStart.setUTCHours(0, 0, 0, 0);
@@ -98,6 +98,9 @@ export const createActivity = async (req, res) => {
     // Parse dates as simple dates (no timezone conversion)
     if (activityData.fecha) {
       activityData.fecha = parseSimpleDate(activityData.fecha);
+    }
+    if (activityData.fechaFin) {
+      activityData.fechaFin = parseSimpleDate(activityData.fechaFin);
     }
     if (activityData.recurrence?.endDate) {
       activityData.recurrence.endDate = parseSimpleDate(activityData.recurrence.endDate);
@@ -194,8 +197,8 @@ export const getActivities = async (req, res) => {
     // Para actividades recurrentes, se filtrará por próxima ocurrencia después
     // (no filtramos recurrentes por fecha en el query porque fecha es la fecha de inicio de la recurrencia)
     if (fechaDesdeFilter || fechaHastaFilter) {
-      if (tipo === 'unica') {
-        // Solo actividades únicas: filtrar por fecha en el query
+      if (tipo === 'unica' || tipo === 'viaje') {
+        // Actividades únicas y viajes: filtrar por fecha en el query
         query.fecha = {};
         if (fechaDesdeFilter) query.fecha.$gte = fechaDesdeFilter;
         if (fechaHastaFilter) query.fecha.$lte = fechaHastaFilter;
@@ -316,8 +319,8 @@ export const getActivities = async (req, res) => {
               return null;
             }
           }
-        } else if (activity.tipo === 'unica') {
-          // Para actividades únicas, verificar que estén en el rango si hay filtro de fecha
+        } else if (activity.tipo === 'unica' || activity.tipo === 'viaje') {
+          // Para actividades únicas y viajes, verificar que estén en el rango si hay filtro de fecha
           if (fechaDesdeFilter || fechaHastaFilter) {
             if (!activity.fecha) {
               // Si no tiene fecha, no mostrar
@@ -521,6 +524,9 @@ export const updateActivity = async (req, res) => {
     const updateData = { ...req.body };
     if (updateData.fecha) {
       updateData.fecha = parseSimpleDate(updateData.fecha);
+    }
+    if (updateData.fechaFin) {
+      updateData.fechaFin = parseSimpleDate(updateData.fechaFin);
     }
     if (updateData.recurrence?.endDate) {
       updateData.recurrence.endDate = parseSimpleDate(updateData.recurrence.endDate);

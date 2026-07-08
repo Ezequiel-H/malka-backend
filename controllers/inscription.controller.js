@@ -7,6 +7,11 @@ import { uploadToCloudinary } from '../middleware/upload.middleware.js';
 
 const isPaidActivity = (activity) => activity && activity.esGratuita === false;
 
+// Los viajes pueden tener precio, pero el pago se coordina por WhatsApp
+// después de confirmar el cupo: no se pide comprobante de transferencia.
+const requiresComprobante = (activity) =>
+  isPaidActivity(activity) && activity.tipo !== 'viaje';
+
 const buildPagoFromFile = async (file, activity) => {
   const comprobante = await uploadToCloudinary(
     file.buffer,
@@ -40,6 +45,20 @@ const freeInscriptionMessage = (activity, estado) => {
   return activity.requiereAprobacion
     ? 'Inscripción realizada. Pendiente de aprobación.'
     : 'Inscripción realizada exitosamente';
+};
+
+// Viaje con precio: el pago no es por transferencia, se coordina por WhatsApp.
+const viajePaidMessage = (estado) => {
+  if (estado === 'en_espera') {
+    return 'Cupo completo. Has sido agregado a la lista de espera. Si se libera un lugar, te contactaremos por WhatsApp para coordinar el pago.';
+  }
+  return 'Inscripción realizada. Una vez confirmado tu cupo, te contactaremos por WhatsApp para coordinar el pago.';
+};
+
+const inscriptionResultMessage = (activity, estado, needsComprobante) => {
+  if (needsComprobante) return paidInscriptionMessage(estado);
+  if (isPaidActivity(activity)) return viajePaidMessage(estado);
+  return freeInscriptionMessage(activity, estado);
 };
 
 /**
@@ -200,8 +219,8 @@ export const createInscription = async (req, res) => {
       return res.status(accessDenied.status).json(accessDenied.body);
     }
 
-    const paid = isPaidActivity(activity);
-    if (paid && !req.file) {
+    const needsComprobante = requiresComprobante(activity);
+    if (needsComprobante && !req.file) {
       return res.status(400).json({ message: 'Debes subir un comprobante de transferencia' });
     }
 
@@ -222,7 +241,7 @@ export const createInscription = async (req, res) => {
     }
 
     let pagoData = null;
-    if (paid) {
+    if (needsComprobante) {
       pagoData = await buildPagoFromFile(req.file, activity);
     }
 
@@ -244,7 +263,7 @@ export const createInscription = async (req, res) => {
         existingInscription.fecha = fechaInscripcion;
         existingInscription.hora = hora;
         if (notas) existingInscription.notas = notas;
-        if (paid) {
+        if (needsComprobante) {
           existingInscription.pago = pagoData;
         } else {
           existingInscription.pago = undefined;
@@ -252,7 +271,7 @@ export const createInscription = async (req, res) => {
         await existingInscription.save();
         
         return res.json({
-          message: paid ? paidInscriptionMessage(nuevoEstado) : freeInscriptionMessage(activity, nuevoEstado),
+          message: inscriptionResultMessage(activity, nuevoEstado, needsComprobante),
           inscription: existingInscription
         });
       }
@@ -270,11 +289,11 @@ export const createInscription = async (req, res) => {
         hora: hora,
         estado: estadoInicial,
         notas,
-        ...(paid ? { pago: pagoData } : {})
+        ...(needsComprobante ? { pago: pagoData } : {})
       });
       await inscription.save();
       return res.json({
-        message: paid ? paidInscriptionMessage(estadoInicial) : freeInscriptionMessage(activity, estadoInicial),
+        message: inscriptionResultMessage(activity, estadoInicial, needsComprobante),
         inscription
       });
     }
@@ -288,7 +307,7 @@ export const createInscription = async (req, res) => {
       hora: hora,
       estado: estadoInicial,
       notas,
-      ...(paid ? { pago: pagoData } : {})
+      ...(needsComprobante ? { pago: pagoData } : {})
     });
 
     if (estadoInicial === 'aceptada') {
@@ -298,7 +317,7 @@ export const createInscription = async (req, res) => {
     await inscription.save();
 
     res.status(201).json({
-      message: paid ? paidInscriptionMessage(estadoInicial) : freeInscriptionMessage(activity, estadoInicial),
+      message: inscriptionResultMessage(activity, estadoInicial, needsComprobante),
       inscription
     });
   } catch (error) {
@@ -395,7 +414,7 @@ export const getPendingPaymentInscriptions = async (req, res) => {
       'pago.comprobante.url': { $exists: true, $ne: '' }
     })
       .populate('userId', 'nombre apellido email telefono')
-      .populate('activityId', 'titulo fecha hora precio esGratuita tipo')
+      .populate('activityId', 'titulo fecha hora precio moneda esGratuita tipo')
       .sort({ fechaInscripcion: -1 });
 
     res.json({ inscriptions, count: inscriptions.length });

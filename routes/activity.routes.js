@@ -17,7 +17,8 @@ const router = express.Router();
 const activityValidation = [
   body('titulo').notEmpty().trim(),
   body('descripcion').notEmpty().trim(),
-  body('tipo').isIn(['unica', 'recurrente']),
+  body('tipo').isIn(['unica', 'recurrente', 'viaje']),
+  body('moneda').optional().isIn(['ARS', 'USD']),
   body('estado').optional().isIn(['borrador', 'publicada', 'eliminada'])
 ];
 
