@@ -431,6 +431,22 @@ export const getActivities = async (req, res) => {
       activities = activities.map((activity) =>
         sanitizeActivityForParticipant(activity)
       );
+
+      // Ordenar por estado de inscripción: primero las confirmadas (aceptada),
+      // luego las pendientes (pendiente/en_espera) y por último las que el
+      // participante todavía puede anotar (sin inscripción). El orden por fecha
+      // se preserva dentro de cada grupo porque Array.sort es estable.
+      const inscripcionOrden = {
+        aceptada: 0,
+        pendiente: 1,
+        en_espera: 2
+      };
+      const ordenInscripcion = (estado) =>
+        estado in inscripcionOrden ? inscripcionOrden[estado] : 3;
+      activities.sort(
+        (a, b) =>
+          ordenInscripcion(a.estadoInscripcion) - ordenInscripcion(b.estadoInscripcion)
+      );
     }
 
     activities = await Promise.all(
