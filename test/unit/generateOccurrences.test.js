@@ -74,6 +74,32 @@ describe('calculateOccurrences', () => {
     // monthly branch uses local date components in util implementation
     expect(occ.some((o) => o.fecha.getDate() === 15)).toBe(true);
   });
+
+  it('includes today for daily recurrence when start is today', () => {
+    const start = new Date(2026, 6, 10, 0, 0, 0, 0); // Friday Jul 10 2026 local
+    const occ = calculateOccurrences(recurrentBase, 5, start);
+    expect(occ.length).toBeGreaterThan(0);
+    expect(occ[0].fecha.getFullYear()).toBe(2026);
+    expect(occ[0].fecha.getMonth()).toBe(6);
+    expect(occ[0].fecha.getDate()).toBe(10);
+  });
+
+  it('includes today for weekly recurrence when start matches daysOfWeek', () => {
+    const start = new Date(2026, 6, 10, 0, 0, 0, 0); // Friday
+    const activity = {
+      ...recurrentBase,
+      recurrence: {
+        frequency: 'weekly',
+        daysOfWeek: [5], // Friday
+        hora: '19:45'
+      }
+    };
+    const occ = calculateOccurrences(activity, 14, start);
+    expect(occ.length).toBeGreaterThan(0);
+    expect(occ[0].fecha.getDate()).toBe(10);
+    expect(occ[0].fecha.getMonth()).toBe(6);
+    expect(occ[1].fecha.getDate()).toBe(17);
+  });
 });
 
 describe('calculateNextOccurrence', () => {

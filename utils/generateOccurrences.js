@@ -34,8 +34,8 @@ export const calculateOccurrences = (activity, daysAhead = 30, startDate = null)
     switch (recurrence.frequency) {
       case 'daily':
         nextDate = new Date(currentDate);
-        if (nextDate <= start) {
-          nextDate.setDate(nextDate.getDate() + 1);
+        if (nextDate < start) {
+          nextDate.setTime(start.getTime());
         }
         break;
 
@@ -50,7 +50,7 @@ export const calculateOccurrences = (activity, daysAhead = 30, startDate = null)
             const daysUntil = (dayOfWeek - currentDate.getDay() + 7) % 7;
             if (daysUntil > 0 || (daysUntil === 0 && isStartDate)) {
               nextDate = new Date(currentDate);
-              nextDate.setDate(nextDate.getDate() + (daysUntil || 7));
+              nextDate.setDate(nextDate.getDate() + (daysUntil === 0 ? 0 : daysUntil));
               found = true;
               break;
             }
@@ -66,8 +66,13 @@ export const calculateOccurrences = (activity, daysAhead = 30, startDate = null)
         } else if (recurrence.dayOfWeek !== undefined) {
           // Compatibilidad con el formato antiguo
           const daysUntil = (recurrence.dayOfWeek - currentDate.getDay() + 7) % 7;
+          const isStartDate = currentDate.getTime() === start.getTime();
           nextDate = new Date(currentDate);
-          nextDate.setDate(nextDate.getDate() + (daysUntil || 7));
+          if (daysUntil === 0 && isStartDate) {
+            // Incluir hoy si coincide con el día de la semana
+          } else {
+            nextDate.setDate(nextDate.getDate() + (daysUntil || 7));
+          }
         }
         break;
 
