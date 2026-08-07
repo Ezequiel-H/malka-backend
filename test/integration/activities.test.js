@@ -338,4 +338,61 @@ describe('GET /api/activities/:id/export', () => {
     expect(res.headers['content-type']).toMatch(/spreadsheet/);
     expect(res.body.length).toBeGreaterThan(100);
   });
+
+  it('filters inscriptions by fecha for recurrent activities', async () => {
+    const ExcelJS = (await import('exceljs')).default;
+    const act = await createActivity(admin._id, {
+      titulo: 'Taller recurrente export',
+      estado: 'publicada',
+      tipo: 'recurrente',
+      fecha: new Date(Date.UTC(2030, 5, 3, 12, 0, 0, 0)),
+      recurrence: {
+        frequency: 'weekly',
+        daysOfWeek: [1],
+        endDate: new Date(Date.UTC(2030, 6, 30, 12, 0, 0, 0)),
+        hora: '10:00'
+      }
+    });
+    const day1 = new Date(Date.UTC(2030, 5, 3, 0, 0, 0, 0));
+    const day2 = new Date(Date.UTC(2030, 5, 10, 0, 0, 0, 0));
+    const otherUser = await createUser({
+      estado: 'approved',
+      email: 'part-export-2@test.local',
+      dni: '11115555',
+      telefono: '+5411000222555'
+    });
+
+    await createInscription(participantApproved._id, act._id, day1, { estado: 'aceptada' });
+    await createInscription(otherUser._id, act._id, day1, { estado: 'aceptada' });
+    await createInscription(participantApproved._id, act._id, day2, { estado: 'aceptada' });
+
+    const res = await request(app)
+      .get(`/api/activities/${act._id}/export`)
+      .query({ fecha: '2030-06-03' })
+      .set('Authorization', bearerFor(admin))
+      .buffer()
+      .parse((res2, callback) => {
+        const data = [];
+        res2.on('data', (chunk) => data.push(chunk));
+        res2.on('end', () => callback(null, Buffer.concat(data)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toMatch(/2030-06-03/);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(res.body);
+    const sheet = workbook.getWorksheet('Inscriptos');
+    // header + 2 inscriptions for that date
+    expect(sheet.rowCount).toBe(3);
+  });
+
+  it('rejects invalid fecha format', async () => {
+    const act = await createActivity(admin._id, { estado: 'publicada' });
+    const res = await request(app)
+      .get(`/api/activities/${act._id}/export`)
+      .query({ fecha: '03-06-2030' })
+      .set('Authorization', bearerFor(admin));
+    expect(res.status).toBe(400);
+  });
 });

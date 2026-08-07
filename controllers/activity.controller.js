@@ -583,13 +583,25 @@ export const deleteActivity = async (req, res) => {
 export const exportInscriptionsToExcel = async (req, res) => {
   try {
     const activityId = req.params.id;
+    const { fecha } = req.query;
     const activity = await Activity.findById(activityId);
     
     if (!activity) {
       return res.status(404).json({ message: 'Actividad no encontrada' });
     }
 
-    const inscriptions = await Inscription.find({ activityId })
+    if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return res.status(400).json({ message: 'fecha debe tener formato YYYY-MM-DD' });
+    }
+
+    const query = { activityId };
+    if (fecha) {
+      const fechaStart = new Date(`${fecha}T00:00:00.000Z`);
+      const fechaEnd = new Date(`${fecha}T23:59:59.999Z`);
+      query.fecha = { $gte: fechaStart, $lte: fechaEnd };
+    }
+
+    const inscriptions = await Inscription.find(query)
       .populate('userId', 'nombre apellido email telefono tags restriccionesAlimentarias')
       .sort({ fechaInscripcion: -1 });
 
@@ -632,9 +644,9 @@ export const exportInscriptionsToExcel = async (req, res) => {
     const formatDateForFilename = (date) => {
       if (!date) return 'sin-fecha';
       const d = new Date(date);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     };
 
@@ -651,7 +663,7 @@ export const exportInscriptionsToExcel = async (req, res) => {
 
     // Clean activity title for filename
     const cleanTitle = activity.titulo.replace(/[^a-z0-9\s]/gi, '').replace(/\s+/g, '_');
-    const eventDate = formatDateForFilename(activity.fecha);
+    const eventDate = fecha || formatDateForFilename(activity.fecha);
     const exportDateTime = formatDateTimeForFilename(new Date());
     const filename = `${cleanTitle}_${eventDate}_exportado_${exportDateTime}.xlsx`;
 
