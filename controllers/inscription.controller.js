@@ -409,10 +409,16 @@ export const countAcceptedInscriptionsLast30Days = async (req, res) => {
 
 export const getPendingPaymentInscriptions = async (req, res) => {
   try {
-    const inscriptions = await Inscription.find({
+    // ?activityId= acota la revisión a una sola actividad (pantalla de
+    // inscripciones por actividad); sin él, revisa todo como siempre.
+    const { activityId } = req.query;
+    const filtro = {
       'pago.estadoPago': 'pendiente',
-      'pago.comprobante.url': { $exists: true, $ne: '' }
-    })
+      'pago.comprobante.url': { $exists: true, $ne: '' },
+    };
+    if (activityId) filtro.activityId = activityId;
+
+    const inscriptions = await Inscription.find(filtro)
       .populate('userId', 'nombre apellido email telefono')
       .populate('activityId', 'titulo fecha hora precio moneda esGratuita tipo')
       .sort({ fechaInscripcion: -1 });

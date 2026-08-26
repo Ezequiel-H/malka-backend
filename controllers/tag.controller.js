@@ -46,7 +46,7 @@ export const createTag = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nombre, descripcion, color } = req.body;
+    const { nombre, descripcion, color, icono } = req.body;
     
     // Normalizar nombre a lowercase
     const nombreNormalizado = nombre.toLowerCase().trim();
@@ -61,6 +61,7 @@ export const createTag = async (req, res) => {
       nombre: nombreNormalizado,
       descripcion: descripcion || '',
       color: color || '#3B82F6',
+      icono: icono || '',
       activa: true
     });
 
@@ -87,7 +88,7 @@ export const updateTag = async (req, res) => {
       return res.status(404).json({ message: 'Tag no encontrada' });
     }
 
-    const { nombre, descripcion, color, activa } = req.body;
+    const { nombre, descripcion, color, activa, icono } = req.body;
 
     // Si se está cambiando el nombre, verificar que no exista otra tag con ese nombre
     if (nombre && nombre.toLowerCase().trim() !== tag.nombre) {
@@ -104,6 +105,7 @@ export const updateTag = async (req, res) => {
 
     if (descripcion !== undefined) tag.descripcion = descripcion;
     if (color !== undefined) tag.color = color;
+    if (icono !== undefined) tag.icono = icono;
     if (activa !== undefined) tag.activa = activa;
 
     await tag.save();
