@@ -80,6 +80,11 @@ const userSchema = new mongoose.Schema({
   comoSeEntero: {
     type: String,
     trim: true
+  },
+  fechaNacimiento: {
+    type: String,
+    trim: true,
+    match: [/^\d{4}-\d{2}-\d{2}$/, 'La fecha de nacimiento debe tener formato YYYY-MM-DD']
   }
 }, {
   timestamps: true

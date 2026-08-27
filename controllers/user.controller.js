@@ -2,6 +2,7 @@ import User from '../models/User.model.js';
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
+import { assertValidBirthDate } from '../utils/calendarDate.js';
 
 const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
@@ -268,6 +269,7 @@ export const updateMyProfile = async (req, res) => {
       telefono,
       restriccionesAlimentarias,
       comoSeEntero,
+      fechaNacimiento,
       tags
     } = req.body;
 
@@ -304,6 +306,12 @@ export const updateMyProfile = async (req, res) => {
       user.restriccionesAlimentarias = restriccionesAlimentarias;
     }
     if (comoSeEntero !== undefined) user.comoSeEntero = comoSeEntero;
+    if (fechaNacimiento !== undefined) {
+      user.fechaNacimiento =
+        fechaNacimiento === '' || fechaNacimiento == null
+          ? undefined
+          : assertValidBirthDate(fechaNacimiento);
+    }
     if (tags !== undefined) {
       user.tags = Array.isArray(tags) ? tags : user.tags;
     }

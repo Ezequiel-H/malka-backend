@@ -13,6 +13,7 @@ import {
 } from '../controllers/user.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAdmin } from '../middleware/auth.middleware.js';
+import { assertValidBirthDate } from '../utils/calendarDate.js';
 
 const router = express.Router();
 
@@ -34,6 +35,13 @@ const myProfileValidation = [
   body('apellido').optional().notEmpty().trim(),
   body('dni').optional().trim().matches(/^\d{7,10}$/),
   body('telefono').optional().trim().isLength({ min: 8, max: 22 }),
+  body('fechaNacimiento')
+    .optional()
+    .custom((value) => {
+      if (value === '' || value == null) return true;
+      assertValidBirthDate(value);
+      return true;
+    }),
   body('tags').optional().isArray(),
   body('restriccionesAlimentarias').optional().isArray(),
   body('comoSeEntero').optional().trim()

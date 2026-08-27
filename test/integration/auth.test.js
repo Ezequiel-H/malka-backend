@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import app from '../../app.js';
+import User from '../../models/User.model.js';
 import { connectMemoryMongo, disconnectMemoryMongo, clearCollections } from '../helpers/mongo.js';
 import { createUser, bearerFor } from '../helpers/factories.js';
 
@@ -10,7 +11,8 @@ const validRegister = {
   nombre: 'Ana',
   apellido: 'García',
   dni: '33444555',
-  telefono: '+5411999888777'
+  telefono: '+5411999888777',
+  fechaNacimiento: '1990-05-15'
 };
 
 beforeAll(connectMemoryMongo);
@@ -24,6 +26,10 @@ describe('POST /api/auth/register', () => {
     expect(res.body.token).toBeTruthy();
     expect(res.body.user.estado).toBe('pending');
     expect(res.body.user.email).toBe(validRegister.email.toLowerCase());
+
+    const saved = await User.findOne({ email: validRegister.email.toLowerCase() });
+    expect(saved.fechaNacimiento).toBe('1990-05-15');
+    expect(typeof saved.fechaNacimiento).toBe('string');
   });
 
   it('rejects invalid payload', async () => {

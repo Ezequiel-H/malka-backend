@@ -2,6 +2,7 @@ import express from 'express';
 import { body } from 'express-validator';
 import { register, login, getCurrentUser } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
+import { assertValidBirthDate } from '../utils/calendarDate.js';
 
 const router = express.Router();
 
@@ -17,6 +18,13 @@ const registerValidation = [
     .matches(/^\d{7,10}$/)
     .withMessage('El DNI debe tener entre 7 y 10 dígitos'),
   body('telefono').notEmpty().trim().isLength({ min: 8, max: 22 }),
+  body('fechaNacimiento')
+    .notEmpty()
+    .withMessage('La fecha de nacimiento es requerida')
+    .custom((value) => {
+      assertValidBirthDate(value);
+      return true;
+    }),
   body('tags').optional().isArray(),
   body('restriccionesAlimentarias').optional().isArray(),
   body('comoSeEntero').optional().trim()

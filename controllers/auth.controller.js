@@ -2,6 +2,7 @@ import User from '../models/User.model.js';
 import { generateToken } from '../utils/generateToken.js';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
+import { assertValidBirthDate } from '../utils/calendarDate.js';
 
 const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
@@ -28,6 +29,7 @@ export const register = async (req, res) => {
       telefono,
       restriccionesAlimentarias,
       comoSeEntero,
+      fechaNacimiento,
       tags
     } = req.body;
 
@@ -55,6 +57,7 @@ export const register = async (req, res) => {
       telefono: telNorm,
       restriccionesAlimentarias: restriccionesAlimentarias || [],
       comoSeEntero: comoSeEntero || '',
+      fechaNacimiento: assertValidBirthDate(fechaNacimiento),
       tags: tagsList
     });
 
