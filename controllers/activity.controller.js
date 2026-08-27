@@ -601,23 +601,88 @@ export const exportInscriptionsToExcel = async (req, res) => {
       query.fecha = { $gte: fechaStart, $lte: fechaEnd };
     }
 
+    // Format dates for filename
+    const formatDateForFilename = (date) => {
+      if (!date) return 'sin-fecha';
+      const d = new Date(date);
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    /* Exportación selectiva: estados y columnas por query param, con los
+       defaults iguales al comportamiento histórico. */
+    const ESTADO_LABELS = {
+      aceptada: 'Aceptada',
+      pendiente: 'Pendiente',
+      en_espera: 'En espera',
+      cancelada: 'Cancelada',
+    };
+    const PAGO_LABELS = { aprobado: 'Aprobado', pendiente: 'En revisión', rechazado: 'Rechazado' };
+    const EXPORT_COLUMNS = {
+      nombre: { header: 'Nombre', width: 20, value: (i) => i.userId?.nombre || '' },
+      apellido: { header: 'Apellido', width: 20, value: (i) => i.userId?.apellido || '' },
+      email: { header: 'Email', width: 30, value: (i) => i.userId?.email || '' },
+      telefono: { header: 'Teléfono', width: 18, value: (i) => i.userId?.telefono || '' },
+      dni: { header: 'DNI', width: 14, value: (i) => i.userId?.dni || '' },
+      restricciones: {
+        header: 'Restricciones Alimenticias',
+        width: 40,
+        value: (i) => (i.userId?.restriccionesAlimentarias || []).join(', '),
+      },
+      tags: { header: 'Tags', width: 30, value: (i) => (i.userId?.tags || []).join(', ') },
+      estado: { header: 'Estado', width: 14, value: (i) => ESTADO_LABELS[i.estado] || i.estado },
+      fechaEvento: {
+        header: 'Fecha del evento',
+        width: 16,
+        value: (i) => formatDateForFilename(i.fecha),
+      },
+      pago: {
+        header: 'Pago',
+        width: 14,
+        value: (i) => (i.pago?.comprobante?.url ? PAGO_LABELS[i.pago.estadoPago] || i.pago.estadoPago : ''),
+      },
+      monto: {
+        header: 'Monto',
+        width: 12,
+        value: (i) => (i.pago?.montoEsperado ?? ''),
+      },
+      fechaInscripcion: {
+        header: 'Inscripto el',
+        width: 16,
+        value: (i) => (i.fechaInscripcion ? formatDateForFilename(i.fechaInscripcion) : ''),
+      },
+    };
+    const DEFAULT_COLUMNS = ['nombre', 'apellido', 'email', 'telefono', 'restricciones', 'tags'];
+
+    const parseList = (raw) =>
+      String(raw || '')
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+
+    const estados = parseList(req.query.estados).filter((e) => ESTADO_LABELS[e]);
+    if (estados.length > 0) {
+      query.estado = { $in: estados };
+    }
+
+    let columnas = parseList(req.query.columnas).filter((c) => EXPORT_COLUMNS[c]);
+    if (columnas.length === 0) columnas = DEFAULT_COLUMNS;
+
     const inscriptions = await Inscription.find(query)
-      .populate('userId', 'nombre apellido email telefono tags restriccionesAlimentarias')
+      .populate('userId', 'nombre apellido email telefono dni tags restriccionesAlimentarias')
       .sort({ fechaInscripcion: -1 });
 
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Inscriptos');
 
-    // Define columns
-    worksheet.columns = [
-      { header: 'Nombre', key: 'nombre', width: 20 },
-      { header: 'Apellido', key: 'apellido', width: 20 },
-      { header: 'Email', key: 'email', width: 30 },
-      { header: 'Teléfono', key: 'telefono', width: 15 },
-      { header: 'Restricciones Alimenticias', key: 'restriccionesAlimentarias', width: 40 },
-      { header: 'Tags', key: 'tags', width: 30 }
-    ];
+    worksheet.columns = columnas.map((clave) => ({
+      header: EXPORT_COLUMNS[clave].header,
+      key: clave,
+      width: EXPORT_COLUMNS[clave].width,
+    }));
 
     // Style header row
     worksheet.getRow(1).font = { bold: true };
@@ -628,27 +693,14 @@ export const exportInscriptionsToExcel = async (req, res) => {
     };
 
     // Add data rows
-    inscriptions.forEach(inscription => {
-      const user = inscription.userId;
-      worksheet.addRow({
-        nombre: user.nombre || '',
-        apellido: user.apellido || '',
-        email: user.email || '',
-        telefono: user.telefono || '',
-        restriccionesAlimentarias: (user.restriccionesAlimentarias || []).join(', ') || '',
-        tags: (user.tags || []).join(', ')
+    inscriptions.forEach((inscription) => {
+      const row = {};
+      columnas.forEach((clave) => {
+        row[clave] = EXPORT_COLUMNS[clave].value(inscription);
       });
+      worksheet.addRow(row);
     });
 
-    // Format dates for filename
-    const formatDateForFilename = (date) => {
-      if (!date) return 'sin-fecha';
-      const d = new Date(date);
-      const year = d.getUTCFullYear();
-      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(d.getUTCDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
 
     const formatDateTimeForFilename = (date) => {
       const d = new Date(date);
