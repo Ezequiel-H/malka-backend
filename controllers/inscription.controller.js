@@ -4,6 +4,11 @@ import User from '../models/User.model.js';
 import { calculateOccurrences } from '../utils/generateOccurrences.js';
 import { participantActivityAccessDenied } from '../utils/participantActivityAccess.js';
 import { uploadToCloudinary } from '../middleware/upload.middleware.js';
+import {
+  notifyInscriptionConfirmed,
+  notifyPaymentRejected,
+  notifyWaitlistPromoted
+} from '../utils/notifications.js';
 
 const isPaidActivity = (activity) => activity && activity.esGratuita === false;
 
@@ -269,7 +274,11 @@ export const createInscription = async (req, res) => {
           existingInscription.pago = undefined;
         }
         await existingInscription.save();
-        
+
+        if (nuevoEstado === 'aceptada') {
+          await notifyInscriptionConfirmed(existingInscription);
+        }
+
         return res.json({
           message: inscriptionResultMessage(activity, nuevoEstado, needsComprobante),
           inscription: existingInscription
@@ -315,6 +324,10 @@ export const createInscription = async (req, res) => {
     }
 
     await inscription.save();
+
+    if (estadoInicial === 'aceptada') {
+      await notifyInscriptionConfirmed(inscription);
+    }
 
     res.status(201).json({
       message: inscriptionResultMessage(activity, estadoInicial, needsComprobante),
@@ -390,6 +403,7 @@ async function promoteFromWaitlist(activityId, fecha) {
     next.estado = nuevoEstado;
     next.fechaAprobacion = nuevoEstado === 'aceptada' ? new Date() : null;
     await next.save();
+    await notifyWaitlistPromoted(next);
     promoted.push(next);
   }
 
@@ -686,6 +700,10 @@ export const updateInscriptionStatus = async (req, res) => {
       await promoteFromWaitlist(inscription.activityId, inscription.fecha);
     }
 
+    if (estado === 'aceptada') {
+      await notifyInscriptionConfirmed(inscription);
+    }
+
     res.json({
       message: `Estado actualizado a ${estado}`,
       inscription
@@ -739,6 +757,8 @@ export const approvePayment = async (req, res) => {
     inscription.fechaAprobacion = new Date();
     await inscription.save();
 
+    await notifyInscriptionConfirmed(inscription);
+
     res.json({
       message: 'Comprobante aprobado. Inscripción confirmada.',
       inscription
@@ -769,6 +789,8 @@ export const rejectPayment = async (req, res) => {
     inscription.estado = 'pendiente';
     inscription.fechaAprobacion = null;
     await inscription.save();
+
+    await notifyPaymentRejected(inscription, inscription.pago.motivoRechazo);
 
     res.json({
       message: 'Comprobante rechazado. El participante puede volver a subir uno nuevo.',

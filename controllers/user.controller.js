@@ -1,4 +1,5 @@
 import User from '../models/User.model.js';
+import { notifyUserApproved } from '../utils/notifications.js';
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
@@ -108,6 +109,8 @@ export const approveUser = async (req, res) => {
     user.aprobadoPor = req.user._id;
     user.rechazadoPor = undefined;
     await user.save();
+
+    await notifyUserApproved(user);
 
     res.json({
       message: 'Usuario aprobado exitosamente',
