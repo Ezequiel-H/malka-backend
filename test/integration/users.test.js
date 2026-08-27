@@ -177,4 +177,13 @@ describe('participant profile', () => {
     expect(res.body.user.nombre).toBe('Updated');
     expect(res.body.user.apellido).toBe('Name');
   });
+
+  it('PATCH /api/users/me can set fechaNacimiento for legacy users', async () => {
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', bearerFor(participantApproved))
+      .send({ fechaNacimiento: '1988-11-03' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.fechaNacimiento).toBe('1988-11-03');
+  });
 });
