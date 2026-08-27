@@ -339,6 +339,63 @@ async function isCupoFull(activity, fechaInscripcion, fechaEnd) {
   return inscriptionsCount >= activity.cupo;
 }
 
+/* Estados que ocupan cupo. `en_espera` y `cancelada` no cuentan. */
+const OCCUPYING_STATES = ['pendiente', 'aceptada'];
+
+const dayRangeOf = (fecha) => {
+  const start = new Date(fecha);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(fecha);
+  end.setUTCHours(23, 59, 59, 999);
+  return { start, end };
+};
+
+/**
+ * Promoción automática de la lista de espera: cuando se libera un lugar en
+ * una fecha, el que más tiempo lleva esperando pasa al estado que le hubiera
+ * tocado al inscribirse con cupo libre (gratis sin aprobación → aceptada;
+ * paga o con aprobación → pendiente, con su comprobante ya cargado si lo
+ * subió al anotarse).
+ *
+ * Es un loop y no una sola promoción porque un mismo evento puede liberar
+ * más de un lugar (p. ej. si el admin sube el cupo en el futuro).
+ * Devuelve las inscripciones promovidas, para notificarlas cuando exista
+ * el canal de emails.
+ */
+async function promoteFromWaitlist(activityId, fecha) {
+  const activity = await Activity.findById(activityId);
+  if (!activity) return [];
+
+  const { start, end } = dayRangeOf(fecha);
+  const promoted = [];
+
+  for (;;) {
+    if (activity.cupo) {
+      const occupied = await Inscription.countDocuments({
+        activityId: activity._id,
+        fecha: { $gte: start, $lte: end },
+        estado: { $in: OCCUPYING_STATES }
+      });
+      if (occupied >= activity.cupo) break;
+    }
+
+    const next = await Inscription.findOne({
+      activityId: activity._id,
+      fecha: { $gte: start, $lte: end },
+      estado: 'en_espera'
+    }).sort({ fechaInscripcion: 1 });
+    if (!next) break;
+
+    const nuevoEstado = determineInitialEstado(activity, false);
+    next.estado = nuevoEstado;
+    next.fechaAprobacion = nuevoEstado === 'aceptada' ? new Date() : null;
+    await next.save();
+    promoted.push(next);
+  }
+
+  return promoted;
+}
+
 export const getMyInscriptions = async (req, res) => {
   try {
     const { estado } = req.query;
@@ -372,9 +429,15 @@ export const cancelInscription = async (req, res) => {
       return res.status(403).json({ message: 'No tienes permisos para cancelar esta inscripción' });
     }
 
+    const ocupabaCupo = OCCUPYING_STATES.includes(inscription.estado);
+
     inscription.estado = 'cancelada';
     inscription.fechaCancelacion = new Date();
     await inscription.save();
+
+    if (ocupabaCupo) {
+      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
+    }
 
     res.json({
       message: 'Inscripción cancelada exitosamente',
@@ -542,9 +605,15 @@ export const rejectInscription = async (req, res) => {
       return res.status(404).json({ message: 'Inscripción no encontrada' });
     }
 
+    const ocupabaCupo = OCCUPYING_STATES.includes(inscription.estado);
+
     inscription.estado = 'cancelada';
     inscription.fechaCancelacion = new Date();
     await inscription.save();
+
+    if (ocupabaCupo) {
+      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
+    }
 
     res.json({
       message: 'Inscripción rechazada',
@@ -597,17 +666,25 @@ export const updateInscriptionStatus = async (req, res) => {
     }
 
     // Actualizar estado y fechas relacionadas
+    /* Sólo la cancelación dispara promoción: si el admin baja a alguien a
+       en_espera a mano, promover al más antiguo desharía su propio cambio. */
+    const liberaCupo = OCCUPYING_STATES.includes(inscription.estado) && estado === 'cancelada';
+
     inscription.estado = estado;
-    
+
     if (estado === 'cancelada' && !inscription.fechaCancelacion) {
       inscription.fechaCancelacion = new Date();
     }
-    
+
     if (estado !== 'aceptada') {
       inscription.fechaAprobacion = null;
     }
 
     await inscription.save();
+
+    if (liberaCupo) {
+      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
+    }
 
     res.json({
       message: `Estado actualizado a ${estado}`,
