@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import { DateTime } from 'luxon';
 import Inscription from '../models/Inscription.model.js';
+import User from '../models/User.model.js';
 import { ARGENTINA_TZ, parseArgentinaDayBounds } from '../utils/argentinaTime.js';
+import { birthdayWindow, describeBirthday, monthDaysInWindow } from '../utils/birthdayWindow.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 366;
@@ -282,5 +284,70 @@ export const getFirstInscriptionRepeatStats = async (req, res) => {
   } catch (error) {
     console.error('Error en getFirstInscriptionRepeatStats:', error);
     res.status(500).json({ message: 'Error al obtener estadísticas de retorno', error: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/birthdays
+ *
+ * Los cumpleaños de esta semana y la siguiente, para que el panel pueda saludar.
+ * Devuelve participantes aprobados; quien todavía no cargó la fecha no aparece
+ * (se cuenta aparte en `sinFecha`, para que el vacío se explique).
+ */
+export const getUpcomingBirthdays = async (req, res) => {
+  try {
+    const hoyISO = DATE_RE.test(String(req.query.hoy || '')) ? req.query.hoy : null;
+    const dias = monthDaysInWindow(hoyISO);
+
+    const base = { role: 'participant', estado: 'approved' };
+
+    const [candidatos, sinFecha] = await Promise.all([
+      User.find({
+        ...base,
+        // Se filtra por 'MM-DD' en la base para no traerse el padrón entero:
+        // la ventana son 15 días, así que la lista de días es corta.
+        $expr: { $in: [{ $substrBytes: [{ $ifNull: ['$fechaNacimiento', ''] }, 5, 5] }, dias] }
+      })
+        .select('nombre apellido email telefono fechaNacimiento')
+        .lean(),
+      User.countDocuments({
+        ...base,
+        $or: [{ fechaNacimiento: { $exists: false } }, { fechaNacimiento: '' }, { fechaNacimiento: null }]
+      })
+    ]);
+
+    const cumpleanios = candidatos
+      .map((u) => {
+        const detalle = describeBirthday(u.fechaNacimiento, hoyISO);
+        return detalle ? { ...u, ...detalle } : null;
+      })
+      // El $expr trae el día correcto pero no sabe de años: el 31 de diciembre
+      // la ventana toca enero, y describeBirthday es quien resuelve cuál cae.
+      .filter(Boolean)
+      .sort(
+        (a, b) =>
+          a.fecha.localeCompare(b.fecha) ||
+          `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`, 'es', {
+            sensitivity: 'base'
+          })
+      );
+
+    const { desde, hasta, finDeEstaSemana } = birthdayWindow(hoyISO);
+
+    res.json({
+      desde: desde.toFormat('yyyy-MM-dd'),
+      hasta: hasta.toFormat('yyyy-MM-dd'),
+      finDeEstaSemana: finDeEstaSemana.toFormat('yyyy-MM-dd'),
+      hoy: cumpleanios.filter((c) => c.esHoy),
+      estaSemana: cumpleanios.filter((c) => !c.esHoy && c.semana === 'esta'),
+      proximaSemana: cumpleanios.filter((c) => c.semana === 'proxima'),
+      total: cumpleanios.length,
+      sinFecha
+    });
+  } catch (error) {
+    console.error('Error al obtener próximos cumpleaños:', error);
+    res
+      .status(500)
+      .json({ message: 'Error al obtener próximos cumpleaños', error: error.message });
   }
 };

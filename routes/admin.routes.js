@@ -1,7 +1,8 @@
 import express from 'express';
 import {
   getFirstInscriptionRepeatStats,
-  getInscriptionStats
+  getInscriptionStats,
+  getUpcomingBirthdays
 } from '../controllers/admin.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { requireAdmin } from '../middleware/auth.middleware.js';
@@ -15,5 +16,6 @@ router.get(
   requireAdmin,
   getFirstInscriptionRepeatStats
 );
+router.get('/birthdays', authenticate, requireAdmin, getUpcomingBirthdays);
 
 export default router;
