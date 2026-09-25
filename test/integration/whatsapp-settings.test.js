@@ -49,6 +49,25 @@ describe('Ajustes de WhatsApp', () => {
     expect(s.plantillasWhatsApp[0].nombre).toBe('Recordatorio');
   });
 
+  it('trae un saludo de cumpleaños por defecto y lo deja editar', async () => {
+    const inicial = await request(app)
+      .get('/api/settings')
+      .set('Authorization', bearerFor(admin))
+      .expect(200);
+    // Sin configurar nada ya hay un saludo usable, con la variable del nombre.
+    expect(inicial.body.settings.whatsappCumpleanosMensaje).toContain('{nombre}');
+
+    const res = await request(app)
+      .put('/api/settings')
+      .set('Authorization', bearerFor(admin))
+      .send({ whatsappCumpleanosMensaje: '¡{nombre}, {edad} y los que faltan!' })
+      .expect(200);
+
+    expect(res.body.settings.whatsappCumpleanosMensaje).toBe('¡{nombre}, {edad} y los que faltan!');
+    // Editar el saludo no toca el resto de los ajustes de WhatsApp.
+    expect(res.body.settings.whatsappNumero).toBe('5491134405730');
+  });
+
   it('el detalle de un viaje pago incluye el contacto de WhatsApp para el participante', async () => {
     const viaje = await createActivity(admin._id, {
       tipo: 'viaje',

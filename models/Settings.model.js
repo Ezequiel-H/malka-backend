@@ -22,6 +22,14 @@ const settingsSchema = new mongoose.Schema(
       default:
         'Hola! Soy {nombre}. Me inscribí al viaje "{actividad}" ({fecha}) y quiero coordinar el pago.',
     },
+    /* Saludo de cumpleaños que el ADMIN manda desde el panel.
+       Variables: {nombre}, {edad}. El default es sobrio a propósito: es un
+       mensaje que sale a nombre de la casa, y el admin lo edita a su gusto. */
+    whatsappCumpleanosMensaje: {
+      type: String,
+      trim: true,
+      default: '¡Feliz cumpleaños, {nombre}! Te abrazamos fuerte desde Malka. 🎂',
+    },
     /* Plantillas del ADMIN para escribirle a inscriptos por WhatsApp.
        Variables: {nombre}, {actividad}, {fecha}, {hora}, {lugar}, {precio}. */
     plantillasWhatsApp: [

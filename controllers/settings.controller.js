@@ -12,8 +12,13 @@ export const getSettings = async (req, res) => {
 
 export const updateSettings = async (req, res) => {
   try {
-    const { instruccionesPagoDefault, whatsappNumero, whatsappViajeMensaje, plantillasWhatsApp } =
-      req.body;
+    const {
+      instruccionesPagoDefault,
+      whatsappNumero,
+      whatsappViajeMensaje,
+      whatsappCumpleanosMensaje,
+      plantillasWhatsApp,
+    } = req.body;
     const settings = await Settings.getSettings();
     if (instruccionesPagoDefault !== undefined) {
       settings.instruccionesPagoDefault = instruccionesPagoDefault;
@@ -24,6 +29,9 @@ export const updateSettings = async (req, res) => {
     }
     if (whatsappViajeMensaje !== undefined) {
       settings.whatsappViajeMensaje = whatsappViajeMensaje;
+    }
+    if (whatsappCumpleanosMensaje !== undefined) {
+      settings.whatsappCumpleanosMensaje = whatsappCumpleanosMensaje;
     }
     if (plantillasWhatsApp !== undefined) {
       if (!Array.isArray(plantillasWhatsApp)) {
