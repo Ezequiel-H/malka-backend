@@ -75,6 +75,7 @@ export const register = async (req, res) => {
         apellido: user.apellido,
         dni: user.dni,
         telefono: user.telefono,
+        fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
         tags: user.tags
@@ -119,6 +120,7 @@ export const login = async (req, res) => {
         email: user.email,
         nombre: user.nombre,
         apellido: user.apellido,
+        fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
         tags: user.tags

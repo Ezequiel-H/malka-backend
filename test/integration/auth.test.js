@@ -61,6 +61,7 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(200);
     expect(res.body.token).toBeTruthy();
     expect(res.body.user.email).toBe(validRegister.email.toLowerCase());
+    expect(res.body.user.fechaNacimiento).toBe('1990-05-15');
   });
 
   it('rejects wrong password', async () => {
