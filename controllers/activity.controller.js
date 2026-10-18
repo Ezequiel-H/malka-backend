@@ -6,6 +6,7 @@ import { validationResult } from 'express-validator';
 import ExcelJS from 'exceljs';
 import { calculateNextOccurrence, calculateOccurrences } from '../utils/generateOccurrences.js';
 import { attachInstruccionesPagoResueltas } from '../utils/paymentInstructions.js';
+import { ageOnDate, todayCalendarDateInZone } from '../utils/calendarDate.js';
 
 // Helper function to convert date string (YYYY-MM-DD) to Date object
 // Simple conversion: just use the year, month, day as-is, no timezone conversion
@@ -620,12 +621,15 @@ export const exportInscriptionsToExcel = async (req, res) => {
       cancelada: 'Cancelada',
     };
     const PAGO_LABELS = { aprobado: 'Aprobado', pendiente: 'En revisión', rechazado: 'Rechazado' };
+    const hoyISO = todayCalendarDateInZone();
     const EXPORT_COLUMNS = {
       nombre: { header: 'Nombre', width: 20, value: (i) => i.userId?.nombre || '' },
       apellido: { header: 'Apellido', width: 20, value: (i) => i.userId?.apellido || '' },
       email: { header: 'Email', width: 30, value: (i) => i.userId?.email || '' },
       telefono: { header: 'Teléfono', width: 18, value: (i) => i.userId?.telefono || '' },
       dni: { header: 'DNI', width: 14, value: (i) => i.userId?.dni || '' },
+      // La edad al día de la exportación, no la fecha de nacimiento.
+      edad: { header: 'Edad', width: 8, value: (i) => ageOnDate(i.userId?.fechaNacimiento, hoyISO) ?? '' },
       restricciones: {
         header: 'Restricciones Alimenticias',
         width: 40,
@@ -671,7 +675,7 @@ export const exportInscriptionsToExcel = async (req, res) => {
     if (columnas.length === 0) columnas = DEFAULT_COLUMNS;
 
     const inscriptions = await Inscription.find(query)
-      .populate('userId', 'nombre apellido email telefono dni tags restriccionesAlimentarias')
+      .populate('userId', 'nombre apellido email telefono dni fechaNacimiento tags restriccionesAlimentarias')
       .sort({ fechaInscripcion: -1 });
 
     // Create Excel workbook

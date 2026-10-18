@@ -56,3 +56,17 @@ export function assertValidBirthDate(value) {
   }
   return normalized;
 }
+
+/**
+ * Edad cumplida al día `hoyISO` (YYYY-MM-DD) para una fecha de nacimiento
+ * YYYY-MM-DD. null si la fecha falta o no es válida.
+ */
+export function ageOnDate(fechaNacimiento, hoyISO = todayCalendarDateInZone()) {
+  const nacimiento = normalizeCalendarDateString(fechaNacimiento);
+  if (!nacimiento || !isValidCalendarDateString(nacimiento)) return null;
+  const [anioN, mesN, diaN] = nacimiento.split('-').map(Number);
+  const [anioH, mesH, diaH] = hoyISO.split('-').map(Number);
+  const yaCumplio = mesH > mesN || (mesH === mesN && diaH >= diaN);
+  const edad = anioH - anioN - (yaCumplio ? 0 : 1);
+  return edad >= 0 ? edad : null;
+}

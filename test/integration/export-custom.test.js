@@ -4,6 +4,7 @@ import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import app from '../../app.js';
 import { connectMemoryMongo, disconnectMemoryMongo, clearCollections } from '../helpers/mongo.js';
 import { createUser, bearerFor, createActivity, createInscription } from '../helpers/factories.js';
+import { ageOnDate, todayCalendarDateInZone } from '../../utils/calendarDate.js';
 
 let admin;
 let ana;
@@ -96,5 +97,35 @@ describe('Exportación personalizada de inscriptos', () => {
     );
 
     expect(ws.getRow(1).values.slice(1)).toEqual(['Nombre', 'DNI']);
+  });
+
+  it('exporta la edad (no la fecha de nacimiento) y deja vacío a quien no la cargó', async () => {
+    const act = await createActivity(admin._id);
+    ana.fechaNacimiento = '1990-06-15';
+    await ana.save();
+    await createInscription(ana._id, act._id, act.fecha, { estado: 'aceptada' });
+    await createInscription(beto._id, act._id, act.fecha, { estado: 'aceptada' });
+
+    const ws = await downloadWorkbook(`/api/activities/${act._id}/export?columnas=nombre,edad`);
+
+    expect(ws.getRow(1).values.slice(1)).toEqual(['Nombre', 'Edad']);
+    const filas = [ws.getRow(2), ws.getRow(3)].map((r) => [r.getCell(1).value, r.getCell(2).value]);
+    expect(filas).toContainEqual(['Ana', ageOnDate('1990-06-15', todayCalendarDateInZone())]);
+    expect(filas).toContainEqual(['Beto', '']);
+  });
+});
+
+describe('ageOnDate', () => {
+  it('cuenta los años cumplidos al día dado', () => {
+    expect(ageOnDate('1990-06-15', '2026-06-14')).toBe(35);
+    expect(ageOnDate('1990-06-15', '2026-06-15')).toBe(36);
+    expect(ageOnDate('2000-02-29', '2026-02-28')).toBe(25);
+    expect(ageOnDate('2000-02-29', '2026-03-01')).toBe(26);
+  });
+
+  it('devuelve null sin fecha válida', () => {
+    expect(ageOnDate('', '2026-01-01')).toBeNull();
+    expect(ageOnDate(undefined, '2026-01-01')).toBeNull();
+    expect(ageOnDate('1990-02-30', '2026-01-01')).toBeNull();
   });
 });
