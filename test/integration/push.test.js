@@ -133,7 +133,7 @@ describe('Actividad nueva', () => {
     const res = await request(app)
       .post('/api/activities')
       .set('Authorization', bearerFor(admin))
-      .send({ ...payload, estado: 'publicada' })
+      .send({ ...payload, estado: 'publicada', notificarParticipantes: true })
       .expect(201);
 
     const [push] = pushesTo(ana);
@@ -149,10 +149,32 @@ describe('Actividad nueva', () => {
       .send({ ...payload, estado: 'borrador' });
     const id = res.body.activity._id;
 
-    await request(app).put(`/api/activities/${id}`).set('Authorization', bearerFor(admin)).send({ ...payload, estado: 'publicada' }).expect(200);
-    await request(app).put(`/api/activities/${id}`).set('Authorization', bearerFor(admin)).send({ ...payload, estado: 'publicada', titulo: 'Otro título' }).expect(200);
+    await request(app).put(`/api/activities/${id}`).set('Authorization', bearerFor(admin)).send({ ...payload, estado: 'publicada', notificarParticipantes: true }).expect(200);
+    await request(app).put(`/api/activities/${id}`).set('Authorization', bearerFor(admin)).send({ ...payload, estado: 'publicada', notificarParticipantes: true, titulo: 'Otro título' }).expect(200);
 
     expect(pushesTo(ana)).toHaveLength(1);
+  });
+
+  it('si el admin elige no avisar, no se manda nada', async () => {
+    await subscribe(ana);
+    const res = await request(app)
+      .post('/api/activities')
+      .set('Authorization', bearerFor(admin))
+      .send({ ...payload, estado: 'publicada', notificarParticipantes: false })
+      .expect(201);
+    expect(res.body.activity.notificarParticipantes).toBeUndefined();
+
+    const borrador = await request(app)
+      .post('/api/activities')
+      .set('Authorization', bearerFor(admin))
+      .send({ ...payload, estado: 'borrador' });
+    await request(app)
+      .put(`/api/activities/${borrador.body.activity._id}`)
+      .set('Authorization', bearerFor(admin))
+      .send({ ...payload, estado: 'publicada' })
+      .expect(200);
+
+    expect(pushesTo(ana)).toHaveLength(0);
   });
 
   it('una actividad privada sólo le llega a quien tiene el tag', async () => {
@@ -163,7 +185,7 @@ describe('Actividad nueva', () => {
     await request(app)
       .post('/api/activities')
       .set('Authorization', bearerFor(admin))
-      .send({ ...payload, estado: 'publicada', visibilidad: 'privada', tagsPrivados: ['socios'] })
+      .send({ ...payload, estado: 'publicada', notificarParticipantes: true, visibilidad: 'privada', tagsPrivados: ['socios'] })
       .expect(201);
 
     expect(pushesTo(ana)).toHaveLength(0);
@@ -178,7 +200,7 @@ describe('Actividad nueva', () => {
     await request(app)
       .post('/api/activities')
       .set('Authorization', bearerFor(admin))
-      .send({ ...payload, estado: 'publicada' })
+      .send({ ...payload, estado: 'publicada', notificarParticipantes: true })
       .expect(201);
 
     expect(__sentPushes).toHaveLength(0);

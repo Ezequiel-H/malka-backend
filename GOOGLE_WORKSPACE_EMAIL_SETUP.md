@@ -7,6 +7,16 @@ variables de entorno y correr una prueba.
 > Acá no van contraseñas ni secretos. Lo que se obtenga en la reunión va
 > directo al `.env` del servidor (o al gestor de secretos del hosting).
 
+**Para usarlo con Claude en la reunión**, abrí Claude Code en
+`malka/backend` y decile:
+
+> Estoy en la reunión con el admin de Google Workspace de Malka. Leé
+> `GOOGLE_WORKSPACE_EMAIL_SETUP.md` y guiame paso a paso siguiendo la
+> sección E.
+
+La sección E está escrita para que Claude sepa en qué orden ir, qué
+preguntar y cómo diagnosticar cada error.
+
 ---
 
 ## 0. Lo que ya sabemos (verificado el 22/10/2026, sin acceso a la consola)
@@ -187,3 +197,75 @@ subir DMARC de `p=none` a `p=quarantine`.
 - Si el hosting bloquea el 587: usar Resend (`RESEND_API_KEY`), que ya está
   soportado, y sumar su registro SPF/DKIM en Cloudflare.
 - Subir DMARC a `quarantine` (B8).
+
+---
+
+## E. Guía para Claude (cómo llevar la reunión)
+
+Instrucciones para el agente que acompañe la reunión. Quien te habla es el
+desarrollador; del otro lado está el admin de Workspace, que es quien toca la
+consola. Vos no tenés acceso a la consola de Google ni a Cloudflare: guiás,
+anotás y probás desde el repo.
+
+### Reglas
+
+- **Un paso por vez.** Decí qué hacer, esperá la respuesta, recién ahí el siguiente.
+  Mensajes cortos: los van a leer en voz alta o en el teléfono.
+- **Nunca pidas ni repitas una contraseña** en el chat. La contraseña de
+  aplicación se pega directo en el `.env` (o en el gestor de secretos del
+  hosting). Si te la pegan igual, decí que la roten al terminar.
+- **No mandes mails sin que te lo pidan.** `npm run email:test` sin casilla
+  sólo verifica; con casilla manda uno, y para eso pedí la dirección y el OK.
+- **No asumas lo que no se confirmó.** Si algo de la sección A queda sin
+  respuesta, anotalo como pendiente y seguí con lo que no depende de eso.
+- **No toques código.** Todo lo necesario ya está (`utils/mailer.js`,
+  `scripts/emailTest.js`). Si aparece algo que exige cambiar código, anotalo
+  y se hace después de la reunión, con tests.
+- Antes de empezar, chequeá el DNS de nuevo (puede haber cambiado desde el 22/10):
+  `dig +short TXT casamalka.org`, `dig +short TXT _dmarc.casamalka.org`,
+  `dig +short TXT google._domainkey.casamalka.org`.
+
+### Orden
+
+1. **A1 primero, siempre.** Dónde corre el backend define todo lo demás.
+   - Si no lo sabe nadie en la reunión, seguí igual con B3 (DKIM) y B5
+     (remitente), que no dependen de eso, y dejá B2/B4 armados para las dos
+     variantes.
+   - Para saber si el hosting deja salir por el 587, desde el servidor:
+     `nc -vz smtp-relay.gmail.com 587` (o correr `npm run email:test` ahí).
+     Si no conecta y desde una compu sí, el hosting lo bloquea → ir por Resend
+     (ver «Después» en Pendientes) y cortar el camino SMTP.
+2. **Árbol de decisión de la autenticación (B2):**
+   - IP pública fija y conocida → autorizar por IP. `SMTP_USER` y `SMTP_PASS` quedan vacíos.
+   - IP que cambia (Render, Railway, Heroku…) → «Requerir autenticación SMTP» → B4.
+   - En duda → autenticación SMTP: funciona en los dos casos.
+3. **A2–A8** en la reunión, rápido: la mayoría son una respuesta corta.
+4. **B1 → B2 → B3 → B4 (si aplica) → B5**, en ese orden. B3 (DKIM) tiene dos
+   partes: generar en Google, cargar en Cloudflare, y **volver a Google** a
+   tocar «Iniciar autenticación». Es fácil olvidarse de la vuelta.
+5. **B6–B7** si hay tiempo y acceso al servidor (o a un `.env` local para
+   probar desde la compu del desarrollador).
+6. Al cerrar: recorrer la checklist C y completar la D. Actualizá este
+   documento marcando lo hecho (sin secretos) y anotá lo que quedó pendiente.
+
+### Diagnóstico de errores de `npm run email:test`
+
+| Lo que dice | Qué significa | Qué hacer |
+|---|---|---|
+| `Falta SMTP_HOST` | No está cargado el `.env`. | Cargar las variables de B6. |
+| `ECONNREFUSED` / `ETIMEDOUT` / `ECONNECTION` | No llega al 587. | Hosting bloqueando el puerto o firewall. Probar desde otra red; si es el hosting → Resend. |
+| `421` (en el saludo/EHLO) | Google no acepta el nombre del EHLO. | Revisar `SMTP_EHLO_NAME=casamalka.org`. |
+| `535 5.7.8 Username and Password not accepted` | Credenciales mal. | Usar la contraseña de **aplicación** (no la normal), sin espacios; la casilla con 2 pasos activa; que sea un usuario con licencia. |
+| `550 5.7.0 Mail relay denied` / `Invalid credentials for relay` | La regla del relay no autoriza este origen. | Por IP: la IP cargada no es la que sale (ver `curl ifconfig.me` desde el servidor). Por SMTP: falta tildar «Requerir autenticación SMTP». Los cambios pueden tardar. |
+| `550 5.7.1` sobre el remitente | `EMAIL_FROM` no está permitido. | Remitentes permitidos en «Sólo direcciones de mis dominios» y que `EMAIL_FROM` sea `@casamalka.org`. |
+| `530 5.7.0 Must issue a STARTTLS command first` | Falta TLS. | Usar el 587 (el código ya exige STARTTLS). |
+| «El servidor ACEPTÓ el mail» pero no llega | Aceptado ≠ entregado. | Mirar spam; en el mail recibido, «Mostrar original» → SPF/DKIM/DMARC. En la consola: Informes → Búsqueda de registros de correo electrónico. |
+| Llega a spam con `dkim=none` | Falta DKIM o no se inició. | Completar B3 (incluida la vuelta a «Iniciar autenticación»). El DNS puede tardar en propagar. |
+
+### Qué dejar escrito al final
+
+En este archivo, en la sección D: hosting y si la IP es fija, método de
+autenticación, casilla que autentica (sólo la dirección), `EMAIL_FROM`,
+`EMAIL_REPLY_TO`, licencias y estado de DKIM. Lo que no se resolvió, en
+Pendientes. Después, commit local con `docs:` (los repos de Malka son de sólo
+lectura para nosotros: no se pushea).

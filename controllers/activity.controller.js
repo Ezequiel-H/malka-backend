@@ -92,8 +92,10 @@ export const createActivity = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // `notificarParticipantes` es una decisión del admin, no un campo de la actividad.
+    const { notificarParticipantes, ...body } = req.body;
     const activityData = {
-      ...req.body,
+      ...body,
       organizadorId: req.user._id
     };
 
@@ -111,7 +113,8 @@ export const createActivity = async (req, res) => {
     const activity = new Activity(activityData);
     await activity.save();
 
-    if (activity.estado === 'publicada') {
+    // Avisar a los participantes es opcional: lo elige el admin al publicar.
+    if (activity.estado === 'publicada' && notificarParticipantes === true) {
       await notifyNewActivity(activity);
     }
 
@@ -543,7 +546,7 @@ export const updateActivity = async (req, res) => {
     }
 
     // Parse dates as simple dates (no timezone conversion)
-    const updateData = { ...req.body };
+    const { notificarParticipantes, ...updateData } = req.body;
     if (updateData.fecha) {
       updateData.fecha = parseSimpleDate(updateData.fecha);
     }
@@ -559,8 +562,9 @@ export const updateActivity = async (req, res) => {
     Object.assign(activity, updateData);
     await activity.save();
 
-    // Pasar de borrador a publicada es «actividad nueva» para participantes.
-    if (!estabaPublicada && activity.estado === 'publicada') {
+    // Pasar de borrador a publicada es «actividad nueva» para participantes,
+    // si el admin eligió avisarles.
+    if (!estabaPublicada && activity.estado === 'publicada' && notificarParticipantes === true) {
       await notifyNewActivity(activity);
     }
 
