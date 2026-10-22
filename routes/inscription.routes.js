@@ -11,6 +11,7 @@ import {
   getAvailableDates,
   getUserActivityInscriptions,
   updateInscriptionStatus,
+  previewWaitlistEmail,
   approvePayment,
   rejectPayment,
   updateComprobante,
@@ -53,6 +54,7 @@ router.get('/activity/:activityId', authenticate, requireAdmin, getActivityInscr
 router.put('/:id/approve', authenticate, requireAdmin, approveInscription);
 router.put('/:id/reject', authenticate, requireAdmin, rejectInscription);
 router.put('/:id/status', authenticate, requireAdmin, updateInscriptionStatus);
+router.get('/:id/waitlist-email-preview', authenticate, requireAdmin, previewWaitlistEmail);
 router.put('/:id/payment/approve', authenticate, requireAdmin, approvePayment);
 router.put('/:id/payment/reject', authenticate, requireAdmin, rejectPayment);
 router.get('/:id/comprobante/file', authenticate, requireAdmin, getComprobanteFile);

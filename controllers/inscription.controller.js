@@ -7,7 +7,8 @@ import { uploadToCloudinary } from '../middleware/upload.middleware.js';
 import {
   notifyInscriptionConfirmed,
   notifyPaymentRejected,
-  notifyWaitlistPromoted
+  notifyWaitlistPromoted,
+  buildWaitlistPromotedEmail
 } from '../utils/notifications.js';
 
 const isPaidActivity = (activity) => activity && activity.esGratuita === false;
@@ -352,63 +353,6 @@ async function isCupoFull(activity, fechaInscripcion, fechaEnd) {
   return inscriptionsCount >= activity.cupo;
 }
 
-/* Estados que ocupan cupo. `en_espera` y `cancelada` no cuentan. */
-const OCCUPYING_STATES = ['pendiente', 'aceptada'];
-
-const dayRangeOf = (fecha) => {
-  const start = new Date(fecha);
-  start.setUTCHours(0, 0, 0, 0);
-  const end = new Date(fecha);
-  end.setUTCHours(23, 59, 59, 999);
-  return { start, end };
-};
-
-/**
- * Promoción automática de la lista de espera: cuando se libera un lugar en
- * una fecha, el que más tiempo lleva esperando pasa al estado que le hubiera
- * tocado al inscribirse con cupo libre (gratis sin aprobación → aceptada;
- * paga o con aprobación → pendiente, con su comprobante ya cargado si lo
- * subió al anotarse).
- *
- * Es un loop y no una sola promoción porque un mismo evento puede liberar
- * más de un lugar (p. ej. si el admin sube el cupo en el futuro).
- * Devuelve las inscripciones promovidas, para notificarlas cuando exista
- * el canal de emails.
- */
-async function promoteFromWaitlist(activityId, fecha) {
-  const activity = await Activity.findById(activityId);
-  if (!activity) return [];
-
-  const { start, end } = dayRangeOf(fecha);
-  const promoted = [];
-
-  for (;;) {
-    if (activity.cupo) {
-      const occupied = await Inscription.countDocuments({
-        activityId: activity._id,
-        fecha: { $gte: start, $lte: end },
-        estado: { $in: OCCUPYING_STATES }
-      });
-      if (occupied >= activity.cupo) break;
-    }
-
-    const next = await Inscription.findOne({
-      activityId: activity._id,
-      fecha: { $gte: start, $lte: end },
-      estado: 'en_espera'
-    }).sort({ fechaInscripcion: 1 });
-    if (!next) break;
-
-    const nuevoEstado = determineInitialEstado(activity, false);
-    next.estado = nuevoEstado;
-    next.fechaAprobacion = nuevoEstado === 'aceptada' ? new Date() : null;
-    await next.save();
-    await notifyWaitlistPromoted(next);
-    promoted.push(next);
-  }
-
-  return promoted;
-}
 
 export const getMyInscriptions = async (req, res) => {
   try {
@@ -443,15 +387,9 @@ export const cancelInscription = async (req, res) => {
       return res.status(403).json({ message: 'No tienes permisos para cancelar esta inscripción' });
     }
 
-    const ocupabaCupo = OCCUPYING_STATES.includes(inscription.estado);
-
     inscription.estado = 'cancelada';
     inscription.fechaCancelacion = new Date();
     await inscription.save();
-
-    if (ocupabaCupo) {
-      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
-    }
 
     res.json({
       message: 'Inscripción cancelada exitosamente',
@@ -619,15 +557,9 @@ export const rejectInscription = async (req, res) => {
       return res.status(404).json({ message: 'Inscripción no encontrada' });
     }
 
-    const ocupabaCupo = OCCUPYING_STATES.includes(inscription.estado);
-
     inscription.estado = 'cancelada';
     inscription.fechaCancelacion = new Date();
     await inscription.save();
-
-    if (ocupabaCupo) {
-      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
-    }
 
     res.json({
       message: 'Inscripción rechazada',
@@ -636,6 +568,38 @@ export const rejectInscription = async (req, res) => {
   } catch (error) {
     console.error('Error al rechazar inscripción:', error);
     res.status(500).json({ message: 'Error al rechazar inscripción', error: error.message });
+  }
+};
+
+/* Estados a los que el admin puede sacar a alguien de la lista de espera. */
+const SALIDAS_DE_ESPERA = ['pendiente', 'aceptada'];
+
+/** Vista previa del mail que recibiría alguien al salir de la lista de espera con `estado`. */
+export const previewWaitlistEmail = async (req, res) => {
+  try {
+    const { estado } = req.query;
+    if (!SALIDAS_DE_ESPERA.includes(estado)) {
+      return res.status(400).json({ message: 'Estado inválido' });
+    }
+
+    const inscription = await Inscription.findById(req.params.id);
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    if (inscription.estado !== 'en_espera') {
+      return res.status(400).json({ message: 'La inscripción no está en lista de espera' });
+    }
+
+    /* Se arma con el estado nuevo sin guardarlo: el texto cambia si queda
+       confirmada o pendiente. */
+    const email = await buildWaitlistPromotedEmail({ ...inscription.toObject(), estado });
+    if (!email) {
+      return res.status(404).json({ message: 'No se pudo armar el mail' });
+    }
+    res.json({ email });
+  } catch (error) {
+    console.error('Error al armar la vista previa del mail:', error);
+    res.status(500).json({ message: 'Error al armar la vista previa del mail', error: error.message });
   }
 };
 
@@ -680,9 +644,10 @@ export const updateInscriptionStatus = async (req, res) => {
     }
 
     // Actualizar estado y fechas relacionadas
-    /* Sólo la cancelación dispara promoción: si el admin baja a alguien a
-       en_espera a mano, promover al más antiguo desharía su propio cambio. */
-    const liberaCupo = OCCUPYING_STATES.includes(inscription.estado) && estado === 'cancelada';
+    /* Sacar a alguien de la lista de espera es decisión del admin, y el mail
+       también: sólo sale si lo pidió (`notificar`), y es el de «se liberó un
+       lugar», no el de confirmación. */
+    const saleDeEspera = inscription.estado === 'en_espera' && SALIDAS_DE_ESPERA.includes(estado);
 
     inscription.estado = estado;
 
@@ -696,11 +661,11 @@ export const updateInscriptionStatus = async (req, res) => {
 
     await inscription.save();
 
-    if (liberaCupo) {
-      await promoteFromWaitlist(inscription.activityId, inscription.fecha);
-    }
-
-    if (estado === 'aceptada') {
+    if (saleDeEspera) {
+      if (req.body.notificar === true) {
+        await notifyWaitlistPromoted(inscription);
+      }
+    } else if (estado === 'aceptada') {
       await notifyInscriptionConfirmed(inscription);
     }
 

@@ -2,6 +2,7 @@ import request from 'supertest';
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
 import app from '../../app.js';
 import Inscription from '../../models/Inscription.model.js';
+import { __sentEmails } from '../../utils/mailer.js';
 import { connectMemoryMongo, disconnectMemoryMongo, clearCollections } from '../helpers/mongo.js';
 import { createUser, bearerFor, createActivity, createInscription } from '../helpers/factories.js';
 
@@ -14,6 +15,7 @@ beforeAll(connectMemoryMongo);
 afterAll(disconnectMemoryMongo);
 beforeEach(async () => {
   await clearCollections();
+  __sentEmails.length = 0;
   admin = await createUser({
     role: 'admin',
     estado: 'approved',
@@ -63,87 +65,129 @@ async function seedFullActivity(activityOverrides = {}) {
   return { activity, ocupante, primera, segunda };
 }
 
-describe('Promoción automática de la lista de espera', () => {
-  it('al cancelar el usuario, promueve al más antiguo de la espera (gratis → aceptada)', async () => {
+const estadoDe = async (inscription) => (await Inscription.findById(inscription._id)).estado;
+
+describe('Lista de espera: la maneja el admin a mano', () => {
+  it('liberar un lugar (cancela, rechazo o cambio de estado) no mueve a nadie de la espera', async () => {
     const { ocupante, primera, segunda } = await seedFullActivity();
-
-    const res = await request(app)
-      .put(`/api/inscriptions/${ocupante._id}/cancel`)
-      .set('Authorization', bearerFor(titular));
-    expect(res.status).toBe(200);
-
-    const promovida = await Inscription.findById(primera._id);
-    expect(promovida.estado).toBe('aceptada');
-    expect(promovida.fechaAprobacion).toBeTruthy();
-
-    const sigueEsperando = await Inscription.findById(segunda._id);
-    expect(sigueEsperando.estado).toBe('en_espera');
-  });
-
-  it('en actividad paga la promoción deja al promovido pendiente (falta revisar el pago)', async () => {
-    const { ocupante, primera } = await seedFullActivity({ esGratuita: false, precio: 5000 });
 
     await request(app)
       .put(`/api/inscriptions/${ocupante._id}/cancel`)
       .set('Authorization', bearerFor(titular))
       .expect(200);
 
-    const promovida = await Inscription.findById(primera._id);
-    expect(promovida.estado).toBe('pendiente');
-    expect(promovida.fechaAprobacion).toBeNull();
+    expect(await estadoDe(primera)).toBe('en_espera');
+    expect(await estadoDe(segunda)).toBe('en_espera');
+    expect(__sentEmails).toHaveLength(0);
   });
 
-  it('el rechazo del admin también libera el lugar y promueve', async () => {
+  it('el rechazo del admin tampoco promueve', async () => {
     const { ocupante, primera } = await seedFullActivity();
-
     await request(app)
       .put(`/api/inscriptions/${ocupante._id}/reject`)
       .set('Authorization', bearerFor(admin))
       .expect(200);
-
-    const promovida = await Inscription.findById(primera._id);
-    expect(promovida.estado).toBe('aceptada');
+    expect(await estadoDe(primera)).toBe('en_espera');
   });
 
-  it('cancelar por cambio de estado (admin) promueve; cancelar a alguien en espera no', async () => {
-    const { ocupante, primera, segunda } = await seedFullActivity();
-
-    // Cancelar a alguien que estaba en espera no libera cupo: nadie se mueve.
-    await request(app)
-      .put(`/api/inscriptions/${segunda._id}/status`)
-      .set('Authorization', bearerFor(admin))
-      .send({ estado: 'cancelada' })
-      .expect(200);
-    expect((await Inscription.findById(primera._id)).estado).toBe('en_espera');
-
-    // Cancelar al ocupante sí promueve.
+  it('cancelar desde el cambio de estado tampoco promueve', async () => {
+    const { ocupante, primera } = await seedFullActivity();
     await request(app)
       .put(`/api/inscriptions/${ocupante._id}/status`)
       .set('Authorization', bearerFor(admin))
       .send({ estado: 'cancelada' })
       .expect(200);
-    expect((await Inscription.findById(primera._id)).estado).toBe('aceptada');
+    expect(await estadoDe(primera)).toBe('en_espera');
   });
 
-  it('no promueve si el lugar liberado es de otra fecha', async () => {
-    const actA = await createActivity(admin._id, { cupo: 1, esGratuita: true });
-    const fechaA = new Date(Date.UTC(2030, 5, 15, 12, 0, 0, 0));
-    const fechaB = new Date(Date.UTC(2030, 5, 16, 12, 0, 0, 0));
-
-    const ocupanteA = await createInscription(titular._id, actA._id, fechaA, {
-      estado: 'aceptada',
-      fechaInscripcion: new Date('2030-01-01T10:00:00Z')
-    });
-    const esperaB = await createInscription(esperaVieja._id, actA._id, fechaB, {
-      estado: 'en_espera',
-      fechaInscripcion: new Date('2030-01-02T10:00:00Z')
-    });
-
+  it('el admin elige a quién sacar, aunque no sea el más antiguo', async () => {
+    const { ocupante, primera, segunda } = await seedFullActivity();
     await request(app)
-      .put(`/api/inscriptions/${ocupanteA._id}/cancel`)
+      .put(`/api/inscriptions/${ocupante._id}/cancel`)
       .set('Authorization', bearerFor(titular))
       .expect(200);
 
-    expect((await Inscription.findById(esperaB._id)).estado).toBe('en_espera');
+    await request(app)
+      .put(`/api/inscriptions/${segunda._id}/status`)
+      .set('Authorization', bearerFor(admin))
+      .send({ estado: 'aceptada' })
+      .expect(200);
+
+    expect(await estadoDe(segunda)).toBe('aceptada');
+    expect(await estadoDe(primera)).toBe('en_espera');
+  });
+
+  it('sin `notificar` no sale ningún mail, ni siquiera el de confirmación', async () => {
+    const { ocupante, primera } = await seedFullActivity();
+    await request(app)
+      .put(`/api/inscriptions/${ocupante._id}/cancel`)
+      .set('Authorization', bearerFor(titular))
+      .expect(200);
+
+    await request(app)
+      .put(`/api/inscriptions/${primera._id}/status`)
+      .set('Authorization', bearerFor(admin))
+      .send({ estado: 'aceptada' })
+      .expect(200);
+
+    expect(__sentEmails).toHaveLength(0);
+  });
+
+  it('con `notificar` sale un solo mail: el de «se liberó un lugar»', async () => {
+    const { ocupante, primera } = await seedFullActivity();
+    await request(app)
+      .put(`/api/inscriptions/${ocupante._id}/cancel`)
+      .set('Authorization', bearerFor(titular))
+      .expect(200);
+
+    await request(app)
+      .put(`/api/inscriptions/${primera._id}/status`)
+      .set('Authorization', bearerFor(admin))
+      .send({ estado: 'aceptada', notificar: true })
+      .expect(200);
+
+    expect(__sentEmails).toHaveLength(1);
+    expect(__sentEmails[0].to).toBe('espera1-wl@test.local');
+    expect(__sentEmails[0].subject).toMatch(/se liberó un lugar/i);
+    expect(__sentEmails[0].html).toMatch(/confirmado/i);
+  });
+});
+
+describe('Vista previa del mail de la lista de espera', () => {
+  it('devuelve el mail según el estado elegido, sin mandarlo ni cambiar nada', async () => {
+    const { primera } = await seedFullActivity({ esGratuita: false, precio: 5000 });
+
+    const res = await request(app)
+      .get(`/api/inscriptions/${primera._id}/waitlist-email-preview?estado=pendiente`)
+      .set('Authorization', bearerFor(admin))
+      .expect(200);
+
+    expect(res.body.email.to).toBe('espera1-wl@test.local');
+    expect(res.body.email.subject).toMatch(/se liberó un lugar/i);
+    expect(res.body.email.html).toMatch(/pendiente/i);
+    expect(__sentEmails).toHaveLength(0);
+    expect(await estadoDe(primera)).toBe('en_espera');
+  });
+
+  it('rechaza estados que no son salidas de la espera y a quien no está esperando', async () => {
+    const { ocupante, primera } = await seedFullActivity();
+
+    await request(app)
+      .get(`/api/inscriptions/${primera._id}/waitlist-email-preview?estado=cancelada`)
+      .set('Authorization', bearerFor(admin))
+      .expect(400);
+
+    await request(app)
+      .get(`/api/inscriptions/${ocupante._id}/waitlist-email-preview?estado=aceptada`)
+      .set('Authorization', bearerFor(admin))
+      .expect(400);
+  });
+
+  it('es sólo para admins', async () => {
+    const { primera } = await seedFullActivity();
+    await request(app)
+      .get(`/api/inscriptions/${primera._id}/waitlist-email-preview?estado=aceptada`)
+      .set('Authorization', bearerFor(titular))
+      .expect(403);
   });
 });

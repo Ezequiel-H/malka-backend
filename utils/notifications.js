@@ -129,13 +129,16 @@ export const notifyPaymentRejected = safe(async (inscription, motivo) => {
   });
 });
 
-/** Se liberó un lugar y salió de la lista de espera. */
-export const notifyWaitlistPromoted = safe(async (inscription) => {
+/**
+ * Mail de «se liberó un lugar» (sin enviar), para que el admin lo vea antes
+ * de mandarlo. Devuelve `null` si falta el usuario o la actividad.
+ */
+export const buildWaitlistPromotedEmail = async (inscription) => {
   const [u, act] = await Promise.all([
     resolveUser(inscription.userId),
     resolveActivity(inscription.activityId)
   ]);
-  if (!u?.email || !act) return false;
+  if (!u?.email || !act) return null;
 
   const confirmada = inscription.estado === 'aceptada';
   const esViajePago = act.tipo === 'viaje' && act.esGratuita === false;
@@ -145,11 +148,13 @@ export const notifyWaitlistPromoted = safe(async (inscription) => {
     detalle = p('Tu lugar quedó <strong>confirmado</strong>. ¡Te esperamos!');
   } else if (esViajePago) {
     detalle = p('Nos vamos a contactar por WhatsApp para coordinar el pago y confirmar tu cupo.');
-  } else {
+  } else if (act.esGratuita === false) {
     detalle = p('Tu inscripción quedó <strong>pendiente</strong>: en cuanto revisemos tu pago te confirmamos el lugar.');
+  } else {
+    detalle = p('Tu inscripción quedó <strong>pendiente</strong>: en cuanto la revisemos te confirmamos el lugar.');
   }
 
-  return sendEmail({
+  return {
     to: u.email,
     subject: `¡Se liberó un lugar en ${act.titulo}!`,
     html: layout(
@@ -158,5 +163,11 @@ export const notifyWaitlistPromoted = safe(async (inscription) => {
         detalle +
         boton('Ver mis inscripciones', '/my-inscriptions')
     )
-  });
+  };
+};
+
+/** Salió de la lista de espera: sólo cuando el admin lo mueve y elige avisar. */
+export const notifyWaitlistPromoted = safe(async (inscription) => {
+  const email = await buildWaitlistPromotedEmail(inscription);
+  return email ? sendEmail(email) : false;
 });

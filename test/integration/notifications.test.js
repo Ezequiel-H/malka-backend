@@ -101,26 +101,31 @@ describe('Notificaciones por email', () => {
     expect(mails[0].html).toContain('el monto no coincide');
   });
 
-  it('la promoción de la lista de espera notifica al promovido', async () => {
+  it('sacar a alguien de la espera manda el mail sólo si el admin lo pide', async () => {
     const activity = await createActivity(admin._id, { cupo: 1, esGratuita: true });
-    const ocupante = await createInscription(participante._id, activity._id, activity.fecha, {
-      estado: 'aceptada',
-      fechaInscripcion: new Date('2030-01-01T10:00:00Z')
+    const sinAviso = await createInscription(participante._id, activity._id, activity.fecha, {
+      estado: 'en_espera'
     });
-    await createInscription(enEspera._id, activity._id, activity.fecha, {
-      estado: 'en_espera',
-      fechaInscripcion: new Date('2030-01-02T10:00:00Z')
+    const conAviso = await createInscription(enEspera._id, activity._id, activity.fecha, {
+      estado: 'en_espera'
     });
 
     await request(app)
-      .put(`/api/inscriptions/${ocupante._id}/cancel`)
-      .set('Authorization', bearerFor(participante))
+      .put(`/api/inscriptions/${sinAviso._id}/status`)
+      .set('Authorization', bearerFor(admin))
+      .send({ estado: 'pendiente' })
       .expect(200);
+    expect(mailsTo('parti-mail@test.local')).toHaveLength(0);
 
+    await request(app)
+      .put(`/api/inscriptions/${conAviso._id}/status`)
+      .set('Authorization', bearerFor(admin))
+      .send({ estado: 'pendiente', notificar: true })
+      .expect(200);
     const mails = mailsTo('espera-mail@test.local');
     expect(mails).toHaveLength(1);
     expect(mails[0].subject).toMatch(/se liberó un lugar/i);
-    expect(mails[0].html).toMatch(/confirmado/i);
+    expect(mails[0].html).toMatch(/pendiente/i);
   });
 
   it('inscribirse a una actividad gratuita con lugar manda la confirmación', async () => {
