@@ -1,14 +1,16 @@
 import User from '../models/User.model.js';
 import Activity from '../models/Activity.model.js';
 import { sendEmail } from './mailer.js';
+import { sendPushToUser } from './push.js';
 
 /**
- * Notificaciones por email a participantes.
+ * Notificaciones a participantes: cada aviso sale por email Y por push (si
+ * la persona activó las notificaciones en algún dispositivo).
  *
  * Cada `notify*` resuelve solo los datos que le falten (usuario/actividad
  * sin popular), arma el HTML con el layout de la marca y envía. Ninguna
- * lanza: se loguea y sigue, porque el email es un efecto secundario de la
- * operación, nunca su resultado.
+ * lanza: se loguea y sigue, porque el aviso es un efecto secundario de la
+ * operación, nunca su resultado. Devuelven si el email salió.
  */
 
 const APP_URL = () => process.env.FRONTEND_URL || 'http://localhost:5174';
@@ -64,6 +66,12 @@ const resolveActivity = async (activityRef) => {
   return id ? Activity.findById(id).select('titulo hora tipo esGratuita lugar') : null;
 };
 
+/** Email + push en paralelo; el resultado es el del email. */
+const deliver = async (user, email, push) => {
+  const [mailOk] = await Promise.all([sendEmail(email), sendPushToUser(user._id, push)]);
+  return mailOk;
+};
+
 const safe = (fn) => async (...args) => {
   try {
     return await fn(...args);
@@ -77,7 +85,7 @@ const safe = (fn) => async (...args) => {
 export const notifyUserApproved = safe(async (user) => {
   const u = await resolveUser(user);
   if (!u?.email) return false;
-  return sendEmail({
+  return deliver(u, {
     to: u.email,
     subject: 'Tu cuenta en Malka fue aprobada',
     html: layout(
@@ -86,6 +94,11 @@ export const notifyUserApproved = safe(async (user) => {
         p('Ya podés ver la cartelera e inscribirte en las actividades.') +
         boton('Ver actividades', '/activities')
     )
+  }, {
+    title: 'Tu cuenta fue aprobada',
+    body: 'Ya podés ver la cartelera e inscribirte en las actividades.',
+    url: '/activities',
+    tag: 'cuenta-aprobada'
   });
 });
 
@@ -96,16 +109,22 @@ export const notifyInscriptionConfirmed = safe(async (inscription) => {
     resolveActivity(inscription.activityId)
   ]);
   if (!u?.email || !act) return false;
-  return sendEmail({
+  const cuando = fmtFecha(inscription.fecha, inscription.hora || act.hora);
+  return deliver(u, {
     to: u.email,
     subject: `Inscripción confirmada: ${act.titulo}`,
     html: layout(
       'Tu lugar está confirmado',
       p(`Te esperamos en <strong>${act.titulo}</strong>.`) +
-        p(fmtFecha(inscription.fecha, inscription.hora || act.hora)) +
+        p(cuando) +
         (act.lugar ? p(act.lugar) : '') +
         boton('Ver mis inscripciones', '/my-inscriptions')
     )
+  }, {
+    title: 'Tu lugar está confirmado',
+    body: `${act.titulo} · ${cuando}`,
+    url: '/my-inscriptions',
+    tag: `inscripcion-${inscription._id}`
   });
 });
 
@@ -116,7 +135,7 @@ export const notifyPaymentRejected = safe(async (inscription, motivo) => {
     resolveActivity(inscription.activityId)
   ]);
   if (!u?.email || !act) return false;
-  return sendEmail({
+  return deliver(u, {
     to: u.email,
     subject: `Revisá tu comprobante: ${act.titulo}`,
     html: layout(
@@ -126,6 +145,12 @@ export const notifyPaymentRejected = safe(async (inscription, motivo) => {
         p('Podés subir uno nuevo desde tus inscripciones y lo revisamos de nuevo.') +
         boton('Subir comprobante nuevo', '/my-inscriptions')
     )
+  }, {
+    title: 'Revisá tu comprobante',
+    body: `No pudimos aprobar el comprobante de ${act.titulo}.${motivo ? ` Motivo: ${motivo}.` : ''}`,
+    url: '/my-inscriptions',
+    tag: `inscripcion-${inscription._id}`,
+    actions: [{ action: 'subir', title: 'Subir otro', url: '/my-inscriptions' }]
   });
 });
 
@@ -169,5 +194,27 @@ export const buildWaitlistPromotedEmail = async (inscription) => {
 /** Salió de la lista de espera: sólo cuando el admin lo mueve y elige avisar. */
 export const notifyWaitlistPromoted = safe(async (inscription) => {
   const email = await buildWaitlistPromotedEmail(inscription);
-  return email ? sendEmail(email) : false;
+  if (!email) return false;
+  const act = await resolveActivity(inscription.activityId);
+  return deliver({ _id: inscription.userId?._id || inscription.userId }, email, {
+    title: `¡Se liberó un lugar en ${act.titulo}!`,
+    body:
+      inscription.estado === 'aceptada'
+        ? 'Saliste de la lista de espera: tu lugar quedó confirmado.'
+        : 'Saliste de la lista de espera: tu inscripción quedó pendiente.',
+    url: '/my-inscriptions',
+    tag: `inscripcion-${inscription._id}`
+  });
+});
+
+/** Mail de prueba (lo usa `npm run email:test`): el mismo layout que los avisos reales. */
+export const buildTestEmail = (to) => ({
+  to,
+  subject: 'Prueba de notificaciones de Malka',
+  html: layout(
+    'Los avisos por mail funcionan',
+    p('Este es un mail de prueba del sistema de Malka.') +
+      p('Si te llegó a la bandeja de entrada (y no a spam), el envío está bien configurado.') +
+      boton('Abrir Malka', '/dashboard')
+  )
 });

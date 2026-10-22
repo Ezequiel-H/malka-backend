@@ -32,6 +32,12 @@ const settingsSchema = new mongoose.Schema(
     },
     /* Plantillas del ADMIN para escribirle a inscriptos por WhatsApp.
        Variables: {nombre}, {actividad}, {fecha}, {hora}, {lugar}, {precio}. */
+    /* Último día (YYYY-MM-DD, hora argentina) en que salió el recordatorio
+       push de actividades del día. Lo usa el job para no repetirlo. */
+    ultimoRecordatorioPush: {
+      type: String,
+      default: null,
+    },
     plantillasWhatsApp: [
       {
         nombre: { type: String, required: true, trim: true },

@@ -5,6 +5,7 @@ import { participantCanViewActivity, participantActivityAccessDenied } from '../
 import { validationResult } from 'express-validator';
 import ExcelJS from 'exceljs';
 import { calculateNextOccurrence, calculateOccurrences } from '../utils/generateOccurrences.js';
+import { notifyNewActivity } from '../utils/activityPush.js';
 import { attachInstruccionesPagoResueltas } from '../utils/paymentInstructions.js';
 import { ageOnDate, todayCalendarDateInZone } from '../utils/calendarDate.js';
 
@@ -109,6 +110,10 @@ export const createActivity = async (req, res) => {
 
     const activity = new Activity(activityData);
     await activity.save();
+
+    if (activity.estado === 'publicada') {
+      await notifyNewActivity(activity);
+    }
 
     res.status(201).json({
       message: 'Actividad creada exitosamente',
@@ -549,8 +554,15 @@ export const updateActivity = async (req, res) => {
       updateData.recurrence.endDate = parseSimpleDate(updateData.recurrence.endDate);
     }
 
+    const estabaPublicada = activity.estado === 'publicada';
+
     Object.assign(activity, updateData);
     await activity.save();
+
+    // Pasar de borrador a publicada es «actividad nueva» para participantes.
+    if (!estabaPublicada && activity.estado === 'publicada') {
+      await notifyNewActivity(activity);
+    }
 
     res.json({
       message: 'Actividad actualizada exitosamente',

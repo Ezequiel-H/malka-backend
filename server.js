@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 
 import app from './app.js';
+import { startDailyReminders } from './utils/activityPush.js';
 
 const execAsync = promisify(exec);
 
@@ -135,6 +136,7 @@ const connectDB = async () => {
 
     const PORT = process.env.PORT || 5001;
     await startServer(PORT);
+    startDailyReminders();
   } catch (error) {
     if (error.code === 'EADDRINUSE') {
       process.exit(1);
