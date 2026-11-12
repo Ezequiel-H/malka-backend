@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+import { TIPOS_DOCUMENTO } from '../utils/documento.js';
+
 export const RESIDENCIAS = ['buenos_aires', 'argentina', 'exterior'];
 export const IDIOMAS = ['es', 'en', 'he'];
 
@@ -88,6 +90,13 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true,
     match: [/^\d{4}-\d{2}-\d{2}$/, 'La fecha de nacimiento debe tener formato YYYY-MM-DD']
+  },
+  /* DNI o pasaporte: el número va en `dni`. Quien usa pasaporte termina el
+     registro por WhatsApp, igual que quien vive fuera de Buenos Aires. */
+  tipoDocumento: {
+    type: String,
+    enum: TIPOS_DOCUMENTO,
+    default: 'dni'
   },
   /* Código de país ISO (AR, IL, UY…): el nombre se arma en el front en el
      idioma de quien lo mira. */

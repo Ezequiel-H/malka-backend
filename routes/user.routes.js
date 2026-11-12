@@ -1,5 +1,6 @@
 import express from 'express';
 import { IDIOMAS, RESIDENCIAS } from '../models/User.model.js';
+import { TIPOS_DOCUMENTO, validarDocumento } from '../utils/documento.js';
 import { body } from 'express-validator';
 import {
   getPendingUsers,
@@ -22,7 +23,8 @@ const router = express.Router();
 const updateUserValidation = [
   body('nombre').optional().notEmpty().trim(),
   body('apellido').optional().notEmpty().trim(),
-  body('dni').optional().trim().matches(/^\d{7,10}$/),
+  body('tipoDocumento').optional().isIn(TIPOS_DOCUMENTO),
+  body('dni').optional().custom(validarDocumento),
   body('telefono').optional().trim(),
   body('tags').optional().isArray(),
   body('tagsPrivados').optional().isArray(),
@@ -34,7 +36,8 @@ const updateUserValidation = [
 const myProfileValidation = [
   body('nombre').optional().notEmpty().trim(),
   body('apellido').optional().notEmpty().trim(),
-  body('dni').optional().trim().matches(/^\d{7,10}$/),
+  body('tipoDocumento').optional().isIn(TIPOS_DOCUMENTO),
+  body('dni').optional().custom(validarDocumento),
   body('telefono').optional().trim().isLength({ min: 8, max: 22 }),
   body('fechaNacimiento')
     .optional()

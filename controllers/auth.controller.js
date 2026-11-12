@@ -1,11 +1,12 @@
 import User from '../models/User.model.js';
+import { normalizarDocumento } from '../utils/documento.js';
 import Settings from '../models/Settings.model.js';
 import { generateToken } from '../utils/generateToken.js';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
 import { assertValidBirthDate } from '../utils/calendarDate.js';
 
-const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const normalizeDni = normalizarDocumento;
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const sanitizeUserForParticipant = (userDoc) => {
   const user = typeof userDoc?.toObject === 'function' ? userDoc.toObject() : userDoc;
@@ -35,7 +36,8 @@ export const register = async (req, res) => {
       nacionalidad,
       residencia,
       ciudad,
-      idioma
+      idioma,
+      tipoDocumento
     } = req.body;
 
     const dniNorm = normalizeDni(dni);
@@ -67,7 +69,8 @@ export const register = async (req, res) => {
       nacionalidad,
       residencia,
       ciudad: residencia === 'buenos_aires' ? undefined : ciudad,
-      idioma
+      idioma,
+      tipoDocumento: tipoDocumento === 'pasaporte' ? 'pasaporte' : 'dni'
     });
 
     await user.save();
@@ -164,7 +167,9 @@ export const getRegistroWhatsapp = async (req, res) => {
   try {
     const settings = await Settings.getSettings();
     res.json({
-      completarPorWhatsapp: req.user.role === 'participant' && Boolean(req.user.residencia) && req.user.residencia !== 'buenos_aires',
+      completarPorWhatsapp:
+        req.user.role === 'participant' &&
+        ((Boolean(req.user.residencia) && req.user.residencia !== 'buenos_aires') || req.user.tipoDocumento === 'pasaporte'),
       numero: settings.whatsappNumero,
       mensaje: settings.whatsappRegistroMensaje
     });

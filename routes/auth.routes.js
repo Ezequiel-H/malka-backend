@@ -1,5 +1,6 @@
 import express from 'express';
 import { IDIOMAS, RESIDENCIAS } from '../models/User.model.js';
+import { TIPOS_DOCUMENTO, validarDocumentoAlta } from '../utils/documento.js';
 import { body } from 'express-validator';
 import { register, login, getCurrentUser, getRegistroWhatsapp } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -13,11 +14,8 @@ const registerValidation = [
   body('password').isLength({ min: 6 }),
   body('nombre').notEmpty().trim(),
   body('apellido').notEmpty().trim(),
-  body('dni')
-    .notEmpty()
-    .trim()
-    .matches(/^\d{7,10}$/)
-    .withMessage('El DNI debe tener entre 7 y 10 dígitos'),
+  body('tipoDocumento').optional().isIn(TIPOS_DOCUMENTO),
+  body('dni').notEmpty().custom(validarDocumentoAlta),
   body('telefono').notEmpty().trim().isLength({ min: 8, max: 22 }),
   body('fechaNacimiento')
     .notEmpty()

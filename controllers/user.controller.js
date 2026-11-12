@@ -1,11 +1,12 @@
 import User from '../models/User.model.js';
+import { normalizarDocumento } from '../utils/documento.js';
 import { notifyUserApproved } from '../utils/notifications.js';
 import mongoose from 'mongoose';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
 import { assertValidBirthDate } from '../utils/calendarDate.js';
 
-const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const normalizeDni = normalizarDocumento;
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const sanitizeUserForParticipant = (userDoc) => {
   const user = typeof userDoc?.toObject === 'function' ? userDoc.toObject() : userDoc;
@@ -174,7 +175,8 @@ export const updateUser = async (req, res) => {
       nivelParticipacion,
       estado,
       restriccionesAlimentarias,
-      comoSeEntero
+      comoSeEntero,
+      tipoDocumento
     } = req.body;
 
     const user = await User.findById(req.params.id);
@@ -205,6 +207,7 @@ export const updateUser = async (req, res) => {
 
     if (nombre) user.nombre = nombre;
     if (apellido) user.apellido = apellido;
+    if (tipoDocumento !== undefined) user.tipoDocumento = tipoDocumento;
     if (dni !== undefined) user.dni = nextDni || undefined;
     if (telefono !== undefined) user.telefono = nextTel || undefined;
     if (tags) user.tags = tags;
@@ -277,7 +280,8 @@ export const updateMyProfile = async (req, res) => {
       nacionalidad,
       residencia,
       ciudad,
-      idioma
+      idioma,
+      tipoDocumento
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -322,6 +326,7 @@ export const updateMyProfile = async (req, res) => {
     if (tags !== undefined) {
       user.tags = Array.isArray(tags) ? tags : user.tags;
     }
+    if (tipoDocumento !== undefined) user.tipoDocumento = tipoDocumento;
     if (nacionalidad !== undefined) user.nacionalidad = nacionalidad || undefined;
     if (residencia !== undefined) user.residencia = residencia || undefined;
     if (ciudad !== undefined) user.ciudad = ciudad || undefined;
