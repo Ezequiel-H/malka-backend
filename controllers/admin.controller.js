@@ -5,7 +5,7 @@ import User from '../models/User.model.js';
 import Activity from '../models/Activity.model.js';
 import Gasto from '../models/Gasto.model.js';
 import Tag from '../models/Tag.model.js';
-import { calcularMetricas, limitesDias } from '../utils/metricas.js';
+import { calcularMetricas, limitesDias, resumenPersona } from '../utils/metricas.js';
 import { ARGENTINA_TZ, parseArgentinaDayBounds } from '../utils/argentinaTime.js';
 import { birthdayWindow, describeBirthday, monthDaysInWindow } from '../utils/birthdayWindow.js';
 
@@ -408,5 +408,36 @@ export const getMetrics = async (req, res) => {
     res.json(metricas);
   } catch (error) {
     res.status(500).json({ message: 'Error al calcular las métricas', error: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/users/:id/metrics — el resumen de una persona para su ficha:
+ * estado, cuánto viene, qué hace, qué pagó y su historial.
+ */
+export const getUserMetrics = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    const usuario = await User.findById(req.params.id).select('_id').lean();
+    if (!usuario) return res.status(404).json({ message: 'Usuario no encontrado' });
+
+    const inscripciones = await Inscription.find({ userId: req.params.id })
+      .select('activityId fecha estado asistencia pago.estadoPago pago.montoEsperado createdAt')
+      .lean();
+    const actividades = await Activity.find({ _id: { $in: inscripciones.map((i) => i.activityId) } })
+      .select('titulo categorias precio moneda estado')
+      .lean();
+    const actividadPorId = new Map(actividades.map((a) => [String(a._id), a]));
+
+    res.json(
+      resumenPersona({
+        inscripciones: inscripciones.map((i) => ({ ...i, actividad: actividadPorId.get(String(i.activityId)) })),
+        hoy: new Date()
+      })
+    );
+  } catch (error) {
+    res.status(500).json({ message: 'Error al calcular el resumen de la persona', error: error.message });
   }
 };

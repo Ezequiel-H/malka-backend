@@ -102,3 +102,14 @@ describe('GET /api/admin/metrics', () => {
     expect(res.body.plata.costoPorEncuentro[0]).toMatchObject({ titulo: 'Cena de Shabat', costoPromedio: 10000 });
   });
 });
+
+describe('GET /api/admin/users/:id/metrics', () => {
+  it('sólo el equipo ve el resumen de una persona', async () => {
+    await createInscription(participant._id, activity._id, new Date('2026-01-09T00:00:00.000Z'), { estado: 'aceptada', asistencia: 'vino' });
+    await request(app).get(`/api/admin/users/${participant._id}/metrics`).set('Authorization', bearerFor(participant)).expect(403);
+    const res = await request(app).get(`/api/admin/users/${participant._id}/metrics`).set('Authorization', bearerFor(admin)).expect(200);
+    expect(res.body).toMatchObject({ participaciones: 1, asistencia: { vino: 1 } });
+    expect(res.body.historial[0].titulo).toBe('Cena de Shabat');
+    await request(app).get('/api/admin/users/000000000000000000000000/metrics').set('Authorization', bearerFor(admin)).expect(404);
+  });
+});

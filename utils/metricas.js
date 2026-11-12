@@ -357,3 +357,108 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
     },
   };
 }
+
+/* ---------------- Una persona ---------------- */
+
+export const DIAS_ALEJANDOSE = 45;
+export const DIAS_INACTIVA = 90;
+export const DIAS_NUEVA = 60;
+export const FRECUENTE_EN_90_DIAS = 6;
+
+/**
+ * El estado de una persona, para entenderla de un vistazo:
+ * - `sin_participar`: nunca vino.
+ * - `inactiva`: hace más de 90 días que no viene.
+ * - `alejandose`: venía y hace más de 45 días que no viene.
+ * - `nueva`: vino por primera vez hace menos de 60 días.
+ * - `frecuente`: 6 veces o más en los últimos 90 días.
+ * - `ocasional`: el resto.
+ * El orden importa: una persona nueva que ya no viene se está alejando.
+ */
+export function estadoPersona({ primera, ultima, enUltimos90, hoy }) {
+  if (!ultima) return 'sin_participar';
+  const diasSinVenir = Math.floor((hoy - ultima) / DIA_MS);
+  if (diasSinVenir > DIAS_INACTIVA) return 'inactiva';
+  if (diasSinVenir > DIAS_ALEJANDOSE) return 'alejandose';
+  if ((hoy - primera) / DIA_MS < DIAS_NUEVA) return 'nueva';
+  if (enUltimos90 >= FRECUENTE_EN_90_DIAS) return 'frecuente';
+  return 'ocasional';
+}
+
+/**
+ * Todo lo de una persona: su estado, cuánto viene, qué hace, qué pagó y su
+ * historial completo de inscripciones (en cualquier estado).
+ *
+ * @param {Array} p.inscripciones  todas las de la persona: { _id, activityId, fecha, estado,
+ *                                 asistencia, pago, createdAt, actividad: { titulo, categorias, precio, moneda } }
+ */
+export function resumenPersona({ inscripciones, hoy = new Date(), meses = 12 }) {
+  const aceptadas = inscripciones.filter((i) => i.estado === 'aceptada');
+  const pasadas = aceptadas.filter((i) => new Date(i.fecha) <= hoy);
+  const participaciones = pasadas
+    .filter((i) => i.asistencia !== 'falto')
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  const primera = participaciones.length ? new Date(participaciones[0].fecha) : null;
+  const ultima = participaciones.length ? new Date(participaciones[participaciones.length - 1].fecha) : null;
+  const desde90 = hoy.getTime() - 90 * DIA_MS;
+  const enUltimos90 = participaciones.filter((p) => new Date(p.fecha).getTime() >= desde90).length;
+  const proximas = aceptadas.filter((i) => new Date(i.fecha) > hoy).length;
+
+  /* Mes a mes, los últimos `meses` meses hasta hoy. */
+  const inicio = DateTime.fromJSDate(hoy, { zone: 'utc' }).startOf('month').minus({ months: meses - 1 }).toJSDate();
+  const porMesMapa = contarPor(
+    participaciones.filter((p) => new Date(p.fecha) >= inicio),
+    (p) => mesCalendario(p.fecha)
+  );
+  const porMes = mesesEntre(inicio, hoy).map((mes) => ({ mes, participaciones: porMesMapa.get(mes) ?? 0 }));
+
+  const mesesActiva = primera ? Math.max(1, (hoy - primera) / (30.44 * DIA_MS)) : null;
+
+  const porCategoria = [...contarPor(participaciones.flatMap((p) => p.actividad?.categorias ?? []), (c) => c).entries()]
+    .map(([nombre, veces]) => ({ nombre, veces }))
+    .sort((a, b) => b.veces - a.veces);
+  const porActividad = [...contarPor(participaciones, (p) => p.actividad?.titulo ?? 'Sin título').entries()]
+    .map(([titulo, veces]) => ({ titulo, veces }))
+    .sort((a, b) => b.veces - a.veces)
+    .slice(0, 6);
+
+  const vino = pasadas.filter((i) => i.asistencia === 'vino').length;
+  const falto = pasadas.filter((i) => i.asistencia === 'falto').length;
+
+  const pagos = inscripciones.filter((i) => i.pago?.estadoPago === 'aprobado');
+  const pagado = pagos.filter((i) => monedaDe(i) === 'ARS').reduce((t, i) => t + montoPago(i), 0);
+  const pagosPendientes = inscripciones.filter((i) => i.pago?.estadoPago === 'pendiente').length;
+
+  const historial = [...inscripciones]
+    .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+    .map((i) => ({
+      _id: i._id,
+      actividadId: i.activityId,
+      titulo: i.actividad?.titulo ?? 'Actividad eliminada',
+      fecha: i.fecha,
+      estado: i.estado,
+      asistencia: i.asistencia ?? null,
+      pasada: new Date(i.fecha) <= hoy,
+      pago: i.pago?.estadoPago ? { estado: i.pago.estadoPago, monto: montoPago(i), moneda: monedaDe(i) } : null,
+    }));
+
+  return {
+    estado: estadoPersona({ primera, ultima, enUltimos90, hoy }),
+    participaciones: participaciones.length,
+    primeraVez: primera,
+    ultimaVez: ultima,
+    diasSinVenir: ultima ? Math.floor((hoy - ultima) / DIA_MS) : null,
+    enUltimos90,
+    porMesPromedio: mesesActiva ? Math.round((participaciones.length / mesesActiva) * 10) / 10 : null,
+    proximas,
+    inscripciones: inscripciones.length,
+    canceladas: inscripciones.filter((i) => i.estado === 'cancelada').length,
+    asistencia: { vino, falto, sinMarcar: pasadas.length - vino - falto, tasa: porcentaje(vino, vino + falto) },
+    porMes,
+    porCategoria,
+    porActividad,
+    plata: { pagado, pagos: pagos.length, pagosPendientes },
+    historial,
+  };
+}

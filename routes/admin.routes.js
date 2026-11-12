@@ -3,6 +3,7 @@ import {
   getFirstInscriptionRepeatStats,
   getInscriptionStats,
   getMetrics,
+  getUserMetrics,
   getUpcomingBirthdays
 } from '../controllers/admin.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -19,5 +20,6 @@ router.get(
 );
 router.get('/birthdays', authenticate, requireAdmin, getUpcomingBirthdays);
 router.get('/metrics', authenticate, requireAdmin, getMetrics);
+router.get('/users/:id/metrics', authenticate, requireAdmin, getUserMetrics);
 
 export default router;

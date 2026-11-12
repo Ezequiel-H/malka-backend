@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularMetricas, mesesEntre, limitesDias } from '../../utils/metricas.js';
+import { calcularMetricas, mesesEntre, limitesDias, resumenPersona } from '../../utils/metricas.js';
 
 const dia = (s) => new Date(`${s}T00:00:00.000Z`);
 const shabat = { titulo: 'Cena de Shabat', categorias: ['espiritualidad', 'cocina'], precio: 5000, moneda: 'ARS', esGratuita: false };
@@ -99,5 +99,48 @@ describe('ayudas de fechas', () => {
     const { inicio, fin } = limitesDias('2026-01-01', '2026-01-31');
     expect(inicio.toISOString()).toBe('2026-01-01T00:00:00.000Z');
     expect(fin.toISOString()).toBe('2026-01-31T23:59:59.999Z');
+  });
+});
+
+describe('resumenPersona', () => {
+  const act = { titulo: 'Cena de Shabat', categorias: ['espiritualidad'], precio: 5000, moneda: 'ARS' };
+  const i = (fecha, extra = {}) => ({ _id: fecha, activityId: 'a', fecha: dia(fecha), estado: 'aceptada', actividad: act, ...extra });
+  const hoy = dia('2026-06-30');
+
+  it('dice quién se está alejando y quién es frecuente', () => {
+    const alejandose = resumenPersona({ inscripciones: [i('2026-01-02'), i('2026-04-10')], hoy });
+    expect(alejandose.estado).toBe('alejandose');
+    expect(alejandose.diasSinVenir).toBe(81);
+
+    const frecuente = resumenPersona({
+      inscripciones: ['2026-01-01', '2026-04-05', '2026-04-20', '2026-05-03', '2026-05-17', '2026-06-01', '2026-06-20'].map((f) => i(f)),
+      hoy,
+    });
+    expect(frecuente.estado).toBe('frecuente');
+    expect(frecuente.enUltimos90).toBe(6);
+  });
+
+  it('una persona nueva, sin participar o inactiva', () => {
+    expect(resumenPersona({ inscripciones: [i('2026-06-10')], hoy }).estado).toBe('nueva');
+    expect(resumenPersona({ inscripciones: [], hoy }).estado).toBe('sin_participar');
+    expect(resumenPersona({ inscripciones: [i('2026-02-01')], hoy }).estado).toBe('inactiva');
+  });
+
+  it('cuenta asistencia, plata, próximas y arma el historial', () => {
+    const r = resumenPersona({
+      inscripciones: [
+        i('2026-06-05', { asistencia: 'vino', pago: { estadoPago: 'aprobado', montoEsperado: 5000 } }),
+        i('2026-06-12', { asistencia: 'falto' }),
+        i('2026-07-03'),
+        i('2026-06-19', { estado: 'cancelada' }),
+      ],
+      hoy,
+    });
+    expect(r.participaciones).toBe(1);
+    expect(r.asistencia).toMatchObject({ vino: 1, falto: 1, tasa: 50 });
+    expect(r.proximas).toBe(1);
+    expect(r.plata.pagado).toBe(5000);
+    expect(r.historial.map((h) => h.estado)).toEqual(['aceptada', 'cancelada', 'aceptada', 'aceptada']);
+    expect(r.porMes).toHaveLength(12);
   });
 });
