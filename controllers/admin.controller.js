@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 import { DateTime } from 'luxon';
 import Inscription from '../models/Inscription.model.js';
 import User from '../models/User.model.js';
+import Activity from '../models/Activity.model.js';
+import Gasto from '../models/Gasto.model.js';
+import Tag from '../models/Tag.model.js';
+import { calcularMetricas, limitesDias } from '../utils/metricas.js';
 import { ARGENTINA_TZ, parseArgentinaDayBounds } from '../utils/argentinaTime.js';
 import { birthdayWindow, describeBirthday, monthDaysInWindow } from '../utils/birthdayWindow.js';
 
@@ -349,5 +353,60 @@ export const getUpcomingBirthdays = async (req, res) => {
     res
       .status(500)
       .json({ message: 'Error al obtener próximos cumpleaños', error: error.message });
+  }
+};
+
+const METRICAS_MAX_DIAS = 731;
+
+/**
+ * GET /api/admin/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * Las métricas del tablero del equipo (personas y plata). Trae las
+ * inscripciones aceptadas de toda la historia porque «primera vez» y «vuelven»
+ * miran hacia atrás del rango; la cuenta vive en utils/metricas.js.
+ */
+export const getMetrics = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+      return res.status(400).json({ message: 'Parámetros from y to obligatorios en formato YYYY-MM-DD' });
+    }
+    const { inicio, fin } = limitesDias(from, to);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fin.getTime())) {
+      return res.status(400).json({ message: 'Fechas inválidas' });
+    }
+    if (inicio > fin) {
+      return res.status(400).json({ message: 'from debe ser anterior o igual a to' });
+    }
+    if ((fin - inicio) / MS_PER_DAY > METRICAS_MAX_DIAS) {
+      return res.status(400).json({ message: `El rango no puede superar ${METRICAS_MAX_DIAS} días` });
+    }
+
+    const [usuarios, actividades, inscripciones, gastos, categorias] = await Promise.all([
+      User.find({ role: 'participant' }).select('createdAt fechaNacimiento').lean(),
+      Activity.find({ estado: { $ne: 'eliminada' } }).select('titulo categorias precio moneda esGratuita').lean(),
+      Inscription.find({ estado: 'aceptada' }).select('userId activityId fecha asistencia pago.estadoPago pago.montoEsperado').lean(),
+      Gasto.find({ fecha: { $gte: inicio, $lte: fin } }).populate('actividadId', 'titulo').lean(),
+      Tag.find().select('nombre color').lean()
+    ]);
+
+    const actividadPorId = new Map(actividades.map((a) => [String(a._id), a]));
+    const metricas = calcularMetricas({
+      usuarios,
+      inscripciones: inscripciones
+        .map((i) => ({ ...i, actividad: actividadPorId.get(String(i.activityId)) }))
+        .filter((i) => i.actividad),
+      gastos: gastos.map((g) => ({
+        ...g,
+        actividadId: g.actividadId?._id ?? null,
+        actividadTitulo: g.actividadId?.titulo
+      })),
+      categorias,
+      desde: from,
+      hasta: to,
+      hoy: new Date()
+    });
+    res.json(metricas);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al calcular las métricas', error: error.message });
   }
 };

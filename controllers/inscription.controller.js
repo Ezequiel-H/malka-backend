@@ -880,3 +880,44 @@ export const getUserActivityInscriptions = async (req, res) => {
   }
 };
 
+
+/**
+ * PUT /api/inscriptions/:id/attendance — el equipo marca si la persona vino.
+ * Body: { asistencia: 'vino' | 'falto' | null } (null borra la marca).
+ * Sólo inscripciones aceptadas: a quien no estaba confirmado no se le toma
+ * asistencia, y así «inscriptos vs. asistentes» compara lo mismo.
+ */
+export const updateInscriptionAttendance = async (req, res) => {
+  try {
+    const { asistencia } = req.body;
+    if (![null, 'vino', 'falto'].includes(asistencia ?? null)) {
+      return res.status(400).json({ message: 'Asistencia inválida' });
+    }
+
+    const inscription = await Inscription.findById(req.params.id);
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    if (inscription.estado !== 'aceptada') {
+      return res.status(400).json({ message: 'Sólo se toma asistencia de inscripciones aceptadas' });
+    }
+
+    if (asistencia) {
+      inscription.asistencia = asistencia;
+      inscription.asistenciaMarcadaEn = new Date();
+      inscription.asistenciaMarcadaPor = req.user._id;
+    } else {
+      inscription.asistencia = undefined;
+      inscription.asistenciaMarcadaEn = undefined;
+      inscription.asistenciaMarcadaPor = undefined;
+    }
+    await inscription.save();
+
+    res.json({
+      message: 'Asistencia actualizada',
+      inscription: { _id: inscription._id, asistencia: inscription.asistencia ?? null }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar la asistencia', error: error.message });
+  }
+};
