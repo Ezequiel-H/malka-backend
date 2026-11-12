@@ -67,6 +67,15 @@ describe('POST /api/auth/register', () => {
     expect(wa.body.completarPorWhatsapp).toBe(false);
   });
 
+  it('guarda el idioma en el registro y lo deja cambiar desde el perfil', async () => {
+    const res = await request(app).post('/api/auth/register').send({ ...validRegister, idioma: 'he' }).expect(201);
+    expect(res.body.user.idioma).toBe('he');
+    const token = `Bearer ${res.body.token}`;
+    const cambio = await request(app).patch('/api/users/me').set('Authorization', token).send({ idioma: 'en' }).expect(200);
+    expect(cambio.body.user.idioma).toBe('en');
+    await request(app).patch('/api/users/me').set('Authorization', token).send({ idioma: 'fr' }).expect(400);
+  });
+
   it('pide nacionalidad y residencia', async () => {
     const { nacionalidad, residencia, ...sinDatos } = validRegister;
     const res = await request(app).post('/api/auth/register').send(sinDatos);

@@ -1,5 +1,5 @@
 import express from 'express';
-import { RESIDENCIAS } from '../models/User.model.js';
+import { IDIOMAS, RESIDENCIAS } from '../models/User.model.js';
 import { body } from 'express-validator';
 import {
   getPendingUsers,
@@ -48,7 +48,8 @@ const myProfileValidation = [
   body('comoSeEntero').optional().trim(),
   body('nacionalidad').optional().trim().toUpperCase().isISO31661Alpha2(),
   body('residencia').optional().isIn(RESIDENCIAS),
-  body('ciudad').optional().trim().isLength({ max: 80 })
+  body('ciudad').optional().trim().isLength({ max: 80 }),
+  body('idioma').optional().isIn(IDIOMAS)
 ];
 
 const adminSetPasswordValidation = [body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres')];

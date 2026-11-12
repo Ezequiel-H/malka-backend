@@ -1,5 +1,5 @@
 import express from 'express';
-import { RESIDENCIAS } from '../models/User.model.js';
+import { IDIOMAS, RESIDENCIAS } from '../models/User.model.js';
 import { body } from 'express-validator';
 import { register, login, getCurrentUser, getRegistroWhatsapp } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
@@ -31,6 +31,7 @@ const registerValidation = [
   body('comoSeEntero').optional().trim(),
   body('nacionalidad').trim().toUpperCase().isISO31661Alpha2().withMessage('Elegí tu nacionalidad'),
   body('residencia').isIn(RESIDENCIAS).withMessage('Contanos dónde vivís'),
+  body('idioma').optional().isIn(IDIOMAS),
   body('ciudad')
     .trim()
     .isLength({ max: 80 })

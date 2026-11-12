@@ -34,7 +34,8 @@ export const register = async (req, res) => {
       tags,
       nacionalidad,
       residencia,
-      ciudad
+      ciudad,
+      idioma
     } = req.body;
 
     const dniNorm = normalizeDni(dni);
@@ -65,7 +66,8 @@ export const register = async (req, res) => {
       tags: tagsList,
       nacionalidad,
       residencia,
-      ciudad: residencia === 'buenos_aires' ? undefined : ciudad
+      ciudad: residencia === 'buenos_aires' ? undefined : ciudad,
+      idioma
     });
 
     await user.save();
@@ -85,7 +87,8 @@ export const register = async (req, res) => {
         fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
-        tags: user.tags
+        tags: user.tags,
+        idioma: user.idioma
       }
     });
   } catch (error) {
@@ -130,7 +133,8 @@ export const login = async (req, res) => {
         fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
-        tags: user.tags
+        tags: user.tags,
+        idioma: user.idioma
       }
     });
   } catch (error) {

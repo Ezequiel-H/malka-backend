@@ -276,7 +276,8 @@ export const updateMyProfile = async (req, res) => {
       tags,
       nacionalidad,
       residencia,
-      ciudad
+      ciudad,
+      idioma
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -324,6 +325,7 @@ export const updateMyProfile = async (req, res) => {
     if (nacionalidad !== undefined) user.nacionalidad = nacionalidad || undefined;
     if (residencia !== undefined) user.residencia = residencia || undefined;
     if (ciudad !== undefined) user.ciudad = ciudad || undefined;
+    if (idioma !== undefined) user.idioma = idioma;
     if (user.residencia === 'buenos_aires') user.ciudad = undefined;
 
     await user.save();

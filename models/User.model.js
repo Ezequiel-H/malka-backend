@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export const RESIDENCIAS = ['buenos_aires', 'argentina', 'exterior'];
+export const IDIOMAS = ['es', 'en', 'he'];
 
 const userSchema = new mongoose.Schema({
   email: {
@@ -106,6 +107,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: 80
+  },
+  /* En qué idioma ve la plataforma. Sin dato = castellano. */
+  idioma: {
+    type: String,
+    enum: IDIOMAS
   }
 }, {
   timestamps: true
