@@ -124,3 +124,15 @@ describe('GET /api/admin/metrics/people', () => {
     expect(res.body.actividades.some((a) => a.titulo === 'Cena de Shabat')).toBe(true);
   });
 });
+
+describe('GET /api/admin/metrics/activities', () => {
+  it('ranking y ficha, sólo para el equipo', async () => {
+    await createInscription(participant._id, activity._id, new Date('2026-01-09T00:00:00.000Z'), { estado: 'aceptada' });
+    await request(app).get('/api/admin/metrics/activities?from=2026-01-01&to=2026-01-31').set('Authorization', bearerFor(participant)).expect(403);
+    const lista = await request(app).get('/api/admin/metrics/activities?from=2026-01-01&to=2026-01-31').set('Authorization', bearerFor(admin)).expect(200);
+    expect(lista.body.actividades[0]).toMatchObject({ titulo: 'Cena de Shabat', encuentros: 1, personas: 1 });
+    const ficha = await request(app).get(`/api/admin/metrics/activities/${activity._id}?from=2026-01-01&to=2026-01-31`).set('Authorization', bearerFor(admin)).expect(200);
+    expect(ficha.body.encuentros).toHaveLength(1);
+    await request(app).get('/api/admin/metrics/activities/000000000000000000000000?from=2026-01-01&to=2026-01-31').set('Authorization', bearerFor(admin)).expect(404);
+  });
+});

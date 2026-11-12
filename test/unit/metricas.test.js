@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularMetricas, mesesEntre, limitesDias, personasDetalle, resumenPersona } from '../../utils/metricas.js';
+import { calcularMetricas, mesesEntre, limitesDias, metricasActividad, metricasActividades, personasDetalle, resumenPersona } from '../../utils/metricas.js';
 
 const dia = (s) => new Date(`${s}T00:00:00.000Z`);
 const shabat = { titulo: 'Cena de Shabat', categorias: ['espiritualidad', 'cocina'], precio: 5000, moneda: 'ARS', esGratuita: false };
@@ -179,5 +179,44 @@ describe('personasDetalle', () => {
     const enero = cohortes.find((c) => c.mes === '2026-01');
     expect(enero.personas).toBe(2);
     expect(enero.despues[0]).toBe(50); // ana volvió en febrero, beto no
+  });
+});
+
+describe('métricas por actividad', () => {
+  const actividades = [
+    { _id: 'shabat', titulo: 'Cena de Shabat', tipo: 'recurrente', precio: 5000, cupo: 10 },
+    { _id: 'yoga', titulo: 'Yoga', tipo: 'recurrente', precio: 0, esGratuita: true },
+  ];
+  const i = (id, userId, activityId, fecha, extra = {}) => ({ _id: id, userId, activityId, fecha: dia(fecha), estado: 'aceptada', ...extra });
+  const inscripciones = [
+    i('1', 'ana', 'shabat', '2026-01-09', { pago: { estadoPago: 'aprobado', montoEsperado: 5000 } }),
+    i('2', 'ana', 'shabat', '2026-01-16'),
+    i('3', 'beto', 'yoga', '2026-01-05'),
+    i('4', 'beto', 'shabat', '2026-01-16', { asistencia: 'falto' }),
+    i('5', 'caro', 'shabat', '2026-01-16', { estado: 'en_espera' }),
+  ];
+  const gastos = [{ fecha: dia('2026-01-09'), monto: 10000, actividadId: 'shabat' }];
+  const base = { desde: '2026-01-01', hasta: '2026-01-31', hoy: dia('2026-06-30') };
+
+  it('arma el ranking con encuentros, puerta de entrada y plata', () => {
+    const filas = metricasActividades({ actividades, inscripciones, gastos, ...base });
+    const shabat = filas.find((f) => f.id === 'shabat');
+    expect(shabat).toMatchObject({ encuentros: 2, participaciones: 2, personas: 1, porEncuentro: 1, ocupacion: 10, puertaDeEntrada: 1, recaudado: 5000, costo: 10000, cobertura: 50, enEspera: 1 });
+    expect(shabat.asistencia.falto).toBe(1);
+    expect(filas.find((f) => f.id === 'yoga').puertaDeEntrada).toBe(1);
+  });
+
+  it('arma la ficha con cada encuentro y qué más hace su gente', () => {
+    const r = metricasActividad({
+      actividad: actividades[0],
+      inscripciones: inscripciones.filter((x) => x.activityId === 'shabat'),
+      todas: inscripciones,
+      gastos,
+      usuarios: [{ _id: 'ana', nombre: 'Ana', fechaNacimiento: '2000-01-01' }],
+      ...base,
+    });
+    expect(r.encuentros.map((e) => e.fecha)).toEqual(['2026-01-09', '2026-01-16']);
+    expect(r.encuentros[1]).toMatchObject({ aceptadas: 2, faltaron: 1, enEspera: 1 });
+    expect(r.habituales[0]).toMatchObject({ nombre: 'Ana', veces: 2 });
   });
 });

@@ -5,7 +5,7 @@ import User from '../models/User.model.js';
 import Activity from '../models/Activity.model.js';
 import Gasto from '../models/Gasto.model.js';
 import Tag from '../models/Tag.model.js';
-import { calcularMetricas, limitesDias, personasDetalle, resumenPersona } from '../utils/metricas.js';
+import { calcularMetricas, limitesDias, metricasActividad, metricasActividades, personasDetalle, resumenPersona } from '../utils/metricas.js';
 import { ARGENTINA_TZ, parseArgentinaDayBounds } from '../utils/argentinaTime.js';
 import { birthdayWindow, describeBirthday, monthDaysInWindow } from '../utils/birthdayWindow.js';
 
@@ -486,5 +486,83 @@ export const getPeopleMetrics = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error al armar el detalle de personas', error: error.message });
+  }
+};
+
+const leerRango = (req, res) => {
+  const { from, to } = req.query;
+  if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+    res.status(400).json({ message: 'Parámetros from y to obligatorios en formato YYYY-MM-DD' });
+    return null;
+  }
+  const { inicio, fin } = limitesDias(from, to);
+  if (inicio > fin || (fin - inicio) / MS_PER_DAY > METRICAS_MAX_DIAS) {
+    res.status(400).json({ message: 'Rango inválido' });
+    return null;
+  }
+  return { from, to };
+};
+
+const CAMPOS_INSCRIPCION = 'userId activityId fecha estado asistencia pago.estadoPago pago.montoEsperado';
+
+/** GET /api/admin/metrics/activities?from&to — el ranking de actividades. */
+export const getActivitiesMetrics = async (req, res) => {
+  try {
+    const rango = leerRango(req, res);
+    if (!rango) return;
+    const [actividades, inscripciones, gastos] = await Promise.all([
+      Activity.find({ estado: { $ne: 'eliminada' } }).select('titulo tipo categorias precio moneda esGratuita cupo').lean(),
+      Inscription.find().select(CAMPOS_INSCRIPCION).lean(),
+      Gasto.find({ actividadId: { $ne: null } }).select('fecha monto moneda actividadId').lean()
+    ]);
+    const actividadPorId = new Map(actividades.map((a) => [String(a._id), a]));
+    res.json({
+      actividades: metricasActividades({
+        actividades,
+        inscripciones: inscripciones.map((i) => ({ ...i, actividad: actividadPorId.get(String(i.activityId)) })),
+        gastos,
+        desde: rango.from,
+        hasta: rango.to,
+        hoy: new Date()
+      })
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al calcular las métricas de actividades', error: error.message });
+  }
+};
+
+/** GET /api/admin/metrics/activities/:id?from&to — la ficha de una actividad. */
+export const getActivityMetrics = async (req, res) => {
+  try {
+    const rango = leerRango(req, res);
+    if (!rango) return;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return res.status(404).json({ message: 'Actividad no encontrada' });
+    const actividad = await Activity.findById(req.params.id).lean();
+    if (!actividad) return res.status(404).json({ message: 'Actividad no encontrada' });
+    const [actividades, todas, gastos] = await Promise.all([
+      Activity.find().select('titulo precio moneda').lean(),
+      Inscription.find().select(CAMPOS_INSCRIPCION).lean(),
+      Gasto.find({ actividadId: actividad._id }).select('fecha monto moneda actividadId').lean()
+    ]);
+    const actividadPorId = new Map(actividades.map((a) => [String(a._id), a]));
+    const conActividad = todas.map((i) => ({ ...i, actividad: actividadPorId.get(String(i.activityId)) }));
+    const propias = conActividad.filter((i) => String(i.activityId) === String(actividad._id));
+    const usuarios = await User.find({ _id: { $in: [...new Set(propias.map((i) => String(i.userId)))] } })
+      .select('nombre apellido fechaNacimiento')
+      .lean();
+    const datos = metricasActividad({
+      actividad,
+      inscripciones: propias,
+      todas: conActividad,
+      gastos,
+      usuarios,
+      desde: rango.from,
+      hasta: rango.to,
+      hoy: new Date()
+    });
+    datos.tambienHacen = datos.tambienHacen.map((t) => ({ ...t, titulo: actividadPorId.get(String(t.actividadId))?.titulo ?? 'Actividad eliminada' }));
+    res.json(datos);
+  } catch (error) {
+    res.status(500).json({ message: 'Error al calcular las métricas de la actividad', error: error.message });
   }
 };

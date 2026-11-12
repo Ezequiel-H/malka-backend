@@ -550,3 +550,197 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
 
   return { personas: filas, cohortes };
 }
+
+/* ---------------- Actividades ---------------- */
+
+const resumenDeInscripciones = (propias, { hoy, enRango, primeraVezMalka, gastosPorDia, cupo }) => {
+  const delRango = propias.filter((i) => enRango(i.fecha));
+  const pasadas = delRango.filter((i) => new Date(i.fecha) <= hoy);
+  const aceptadas = pasadas.filter((i) => i.estado === 'aceptada');
+  const participaciones = aceptadas.filter((i) => i.asistencia !== 'falto');
+  const encuentros = [...new Set(aceptadas.map((i) => diaCalendario(i.fecha)))];
+  const personas = new Set(participaciones.map((i) => String(i.userId)));
+  const vecesPorPersona = contarPor(participaciones, (i) => String(i.userId));
+  const repiten = [...vecesPorPersona.values()].filter((n) => n >= 2).length;
+  /* Puerta de entrada: la primera vez en Malka de esa persona fue en esta
+     actividad, dentro del período. */
+  const puerta = participaciones.filter((i) => {
+    const primera = primeraVezMalka.get(String(i.userId));
+    return primera && primera.id === String(i._id);
+  }).length;
+  const vino = aceptadas.filter((i) => i.asistencia === 'vino').length;
+  const falto = aceptadas.filter((i) => i.asistencia === 'falto').length;
+  const pagos = delRango.filter((i) => i.pago?.estadoPago === 'aprobado' && monedaDe(i) === 'ARS');
+  const recaudado = pagos.reduce((t, i) => t + montoPago(i), 0);
+  const costo = [...gastosPorDia.entries()].filter(([dia]) => enRango(new Date(`${dia}T00:00:00.000Z`))).reduce((t, [, m]) => t + m, 0);
+  const porEncuentro = encuentros.length ? participaciones.length / encuentros.length : null;
+  return {
+    encuentros: encuentros.length,
+    participaciones: participaciones.length,
+    personas: personas.size,
+    porEncuentro: porEncuentro === null ? null : Math.round(porEncuentro * 10) / 10,
+    ocupacion: cupo && porEncuentro !== null ? porcentaje(porEncuentro, cupo) : null,
+    repiten,
+    repitenPorcentaje: porcentaje(repiten, personas.size),
+    puertaDeEntrada: puerta,
+    asistencia: { vino, falto, tasa: porcentaje(vino, vino + falto) },
+    canceladas: delRango.filter((i) => i.estado === 'cancelada').length,
+    enEspera: delRango.filter((i) => i.estado === 'en_espera').length,
+    recaudado,
+    costo,
+    cobertura: porcentaje(recaudado, costo),
+  };
+};
+
+const prepararActividades = ({ inscripciones, gastos, hoy }) => {
+  /* La primera participación de cada persona en toda Malka (para «puerta de
+     entrada»). */
+  const primeraVezMalka = new Map();
+  for (const i of inscripciones) {
+    if (i.estado !== 'aceptada' || i.asistencia === 'falto' || new Date(i.fecha) > hoy) continue;
+    const k = String(i.userId);
+    const actual = primeraVezMalka.get(k);
+    if (!actual || new Date(i.fecha) < actual.fecha) primeraVezMalka.set(k, { fecha: new Date(i.fecha), id: String(i._id) });
+  }
+  const gastosPorActividad = new Map();
+  for (const g of gastos) {
+    if (!g.actividadId || (g.moneda ?? 'ARS') !== 'ARS') continue;
+    const k = String(g.actividadId);
+    if (!gastosPorActividad.has(k)) gastosPorActividad.set(k, new Map());
+    const dia = diaCalendario(g.fecha);
+    gastosPorActividad.get(k).set(dia, (gastosPorActividad.get(k).get(dia) ?? 0) + g.monto);
+  }
+  const porActividad = new Map();
+  for (const i of inscripciones) {
+    const k = String(i.activityId);
+    if (!porActividad.has(k)) porActividad.set(k, []);
+    porActividad.get(k).push(i);
+  }
+  return { primeraVezMalka, gastosPorActividad, porActividad };
+};
+
+/**
+ * Una fila por actividad con sus números del período, para el ranking.
+ * Las inscripciones vienen en todos los estados (para contar cancelaciones y
+ * lista de espera); los gastos, de toda la historia de esas actividades.
+ */
+export function metricasActividades({ actividades, inscripciones, gastos, desde, hasta, hoy = new Date() }) {
+  const { inicio, fin } = limitesDias(desde, hasta);
+  const enRango = (f) => {
+    const t = new Date(f).getTime();
+    return t >= inicio.getTime() && t <= fin.getTime();
+  };
+  const { primeraVezMalka, gastosPorActividad, porActividad } = prepararActividades({ inscripciones, gastos, hoy });
+  return actividades
+    .map((a) => ({
+      id: String(a._id),
+      titulo: a.titulo,
+      tipo: a.tipo,
+      categorias: a.categorias ?? [],
+      gratuita: Boolean(a.esGratuita) || !(a.precio > 0),
+      cupo: a.cupo ?? null,
+      ...resumenDeInscripciones(porActividad.get(String(a._id)) ?? [], {
+        hoy,
+        enRango,
+        primeraVezMalka,
+        gastosPorDia: gastosPorActividad.get(String(a._id)) ?? new Map(),
+        cupo: a.cupo,
+      }),
+    }))
+    .filter((f) => f.encuentros > 0 || f.canceladas > 0 || f.enEspera > 0);
+}
+
+/**
+ * Todo de una actividad: sus números, cada encuentro, quiénes vienen más,
+ * qué más hace su gente y la edad.
+ */
+export function metricasActividad({ actividad, inscripciones, todas, gastos, usuarios, desde, hasta, hoy = new Date() }) {
+  const { inicio, fin } = limitesDias(desde, hasta);
+  const enRango = (f) => {
+    const t = new Date(f).getTime();
+    return t >= inicio.getTime() && t <= fin.getTime();
+  };
+  const id = String(actividad._id);
+  const { primeraVezMalka, gastosPorActividad } = prepararActividades({ inscripciones: todas, gastos, hoy });
+  const gastosPorDia = gastosPorActividad.get(id) ?? new Map();
+  const resumen = resumenDeInscripciones(inscripciones, { hoy, enRango, primeraVezMalka, gastosPorDia, cupo: actividad.cupo });
+
+  const delRango = inscripciones.filter((i) => enRango(i.fecha));
+  const porDia = new Map();
+  for (const i of delRango) {
+    const dia = diaCalendario(i.fecha);
+    if (!porDia.has(dia)) porDia.set(dia, []);
+    porDia.get(dia).push(i);
+  }
+  const encuentros = [...porDia.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([dia, lista]) => {
+      const aceptadas = lista.filter((i) => i.estado === 'aceptada');
+      const pasado = new Date(`${dia}T00:00:00.000Z`) <= hoy;
+      return {
+        fecha: dia,
+        pasado,
+        aceptadas: aceptadas.length,
+        vinieron: aceptadas.filter((i) => i.asistencia === 'vino').length,
+        faltaron: aceptadas.filter((i) => i.asistencia === 'falto').length,
+        nuevas: aceptadas.filter((i) => primeraVezMalka.get(String(i.userId))?.id === String(i._id)).length,
+        enEspera: lista.filter((i) => i.estado === 'en_espera').length,
+        canceladas: lista.filter((i) => i.estado === 'cancelada').length,
+        recaudado: lista.filter((i) => i.pago?.estadoPago === 'aprobado' && monedaDe(i) === 'ARS').reduce((t, i) => t + montoPago(i), 0),
+        costo: gastosPorDia.get(dia) ?? 0,
+      };
+    });
+
+  const participaciones = delRango.filter((i) => i.estado === 'aceptada' && i.asistencia !== 'falto' && new Date(i.fecha) <= hoy);
+  const usuarioPorId = new Map(usuarios.map((u) => [String(u._id), u]));
+  const veces = contarPor(participaciones, (i) => String(i.userId));
+  const habituales = [...veces.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([u, n]) => {
+      const persona = usuarioPorId.get(u);
+      return { id: u, nombre: [persona?.nombre, persona?.apellido].filter(Boolean).join(' ') || 'Sin nombre', veces: n };
+    });
+
+  /* Qué más hace la gente de esta actividad, en el mismo período. */
+  const suGente = new Set(veces.keys());
+  const otras = contarPor(
+    todas.filter(
+      (i) =>
+        suGente.has(String(i.userId)) &&
+        String(i.activityId) !== id &&
+        i.estado === 'aceptada' &&
+        i.asistencia !== 'falto' &&
+        enRango(i.fecha) &&
+        new Date(i.fecha) <= hoy
+    ),
+    (i) => `${i.userId}|${i.activityId}`
+  );
+  const personasPorOtra = contarPor([...otras.keys()], (k) => k.split('|')[1]);
+  const tambienHacen = [...personasPorOtra.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([actividadId, personas]) => ({ actividadId, personas, porcentaje: porcentaje(personas, suGente.size) }));
+
+  const edades = [...suGente].map((u) => edadA(usuarioPorId.get(u)?.fechaNacimiento, hoy)).filter((e) => e !== null);
+
+  return {
+    actividad: {
+      id,
+      titulo: actividad.titulo,
+      tipo: actividad.tipo,
+      categorias: actividad.categorias ?? [],
+      cupo: actividad.cupo ?? null,
+      gratuita: Boolean(actividad.esGratuita) || !(actividad.precio > 0),
+      precio: actividad.precio ?? 0,
+    },
+    resumen,
+    encuentros,
+    habituales,
+    tambienHacen,
+    edad: {
+      promedio: edades.length ? Math.round((edades.reduce((a, b) => a + b, 0) / edades.length) * 10) / 10 : null,
+      tramos: TRAMOS_EDAD.map((t) => ({ id: t.id, etiqueta: t.etiqueta, personas: edades.filter((e) => e >= t.min && e <= t.max).length })),
+    },
+  };
+}
