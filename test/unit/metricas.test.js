@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calcularMetricas, mesesEntre, limitesDias, resumenPersona } from '../../utils/metricas.js';
+import { calcularMetricas, mesesEntre, limitesDias, personasDetalle, resumenPersona } from '../../utils/metricas.js';
 
 const dia = (s) => new Date(`${s}T00:00:00.000Z`);
 const shabat = { titulo: 'Cena de Shabat', categorias: ['espiritualidad', 'cocina'], precio: 5000, moneda: 'ARS', esGratuita: false };
@@ -142,5 +142,42 @@ describe('resumenPersona', () => {
     expect(r.plata.pagado).toBe(5000);
     expect(r.historial.map((h) => h.estado)).toEqual(['aceptada', 'cancelada', 'aceptada', 'aceptada']);
     expect(r.porMes).toHaveLength(12);
+  });
+});
+
+describe('personasDetalle', () => {
+  const act = (titulo, categorias) => ({ titulo, categorias, precio: 0, moneda: 'ARS' });
+  const shabat = act('Cena de Shabat', ['espiritualidad']);
+  const yoga = act('Yoga', ['bienestar']);
+  const i = (userId, fecha, actividad, extra = {}) => ({
+    userId, activityId: actividad.titulo, fecha: dia(fecha), estado: 'aceptada', actividad, ...extra,
+  });
+  const usuarios = [
+    { _id: 'ana', nombre: 'Ana', apellido: 'G', fechaNacimiento: '2000-01-01', nacionalidad: 'IL', residencia: 'exterior', createdAt: dia('2026-01-01') },
+    { _id: 'beto', nombre: 'Beto', apellido: 'K', createdAt: dia('2026-01-01') },
+  ];
+  const { personas, cohortes } = personasDetalle({
+    usuarios,
+    inscripciones: [
+      i('ana', '2026-01-09', shabat),
+      i('ana', '2026-02-13', shabat),
+      i('ana', '2026-02-10', yoga, { asistencia: 'falto' }),
+      i('beto', '2026-01-16', yoga),
+    ],
+    desde: '2026-01-01',
+    hasta: '2026-06-30',
+    hoy: dia('2026-06-30'),
+  });
+
+  it('arma una fila por persona con lo del período', () => {
+    const ana = personas.find((p) => p.id === 'ana');
+    expect(ana).toMatchObject({ nombre: 'Ana G', edad: 26, nacionalidad: 'IL', veces: 2, categorias: ['espiritualidad'] });
+    expect(ana.nuevaEnRango).toBe(true);
+  });
+
+  it('calcula la retención por mes de primera visita', () => {
+    const enero = cohortes.find((c) => c.mes === '2026-01');
+    expect(enero.personas).toBe(2);
+    expect(enero.despues[0]).toBe(50); // ana volvió en febrero, beto no
   });
 });

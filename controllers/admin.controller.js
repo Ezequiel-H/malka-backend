@@ -5,7 +5,7 @@ import User from '../models/User.model.js';
 import Activity from '../models/Activity.model.js';
 import Gasto from '../models/Gasto.model.js';
 import Tag from '../models/Tag.model.js';
-import { calcularMetricas, limitesDias, resumenPersona } from '../utils/metricas.js';
+import { calcularMetricas, limitesDias, personasDetalle, resumenPersona } from '../utils/metricas.js';
 import { ARGENTINA_TZ, parseArgentinaDayBounds } from '../utils/argentinaTime.js';
 import { birthdayWindow, describeBirthday, monthDaysInWindow } from '../utils/birthdayWindow.js';
 
@@ -439,5 +439,52 @@ export const getUserMetrics = async (req, res) => {
     );
   } catch (error) {
     res.status(500).json({ message: 'Error al calcular el resumen de la persona', error: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/metrics/people?from=YYYY-MM-DD&to=YYYY-MM-DD
+ * Una fila por participante para filtrar en la pantalla «En detalle», más la
+ * retención por cohorte y los catálogos (actividades y categorías) de los
+ * filtros.
+ */
+export const getPeopleMetrics = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
+      return res.status(400).json({ message: 'Parámetros from y to obligatorios en formato YYYY-MM-DD' });
+    }
+    const { inicio, fin } = limitesDias(from, to);
+    if (inicio > fin || (fin - inicio) / MS_PER_DAY > METRICAS_MAX_DIAS) {
+      return res.status(400).json({ message: 'Rango inválido' });
+    }
+
+    const [usuarios, actividades, inscripciones, categorias] = await Promise.all([
+      User.find({ role: 'participant' })
+        .select('nombre apellido email telefono fechaNacimiento nacionalidad residencia ciudad comoSeEntero idioma tipoDocumento estado createdAt')
+        .lean(),
+      Activity.find({ estado: { $ne: 'eliminada' } }).select('titulo categorias precio moneda').lean(),
+      Inscription.find({ estado: 'aceptada' }).select('userId activityId fecha estado asistencia pago.estadoPago pago.montoEsperado').lean(),
+      Tag.find().select('nombre color').lean()
+    ]);
+    const actividadPorId = new Map(actividades.map((a) => [String(a._id), a]));
+    const { personas, cohortes } = personasDetalle({
+      usuarios,
+      inscripciones: inscripciones
+        .map((i) => ({ ...i, actividad: actividadPorId.get(String(i.activityId)) }))
+        .filter((i) => i.actividad),
+      desde: from,
+      hasta: to,
+      hoy: new Date()
+    });
+
+    res.json({
+      personas,
+      cohortes,
+      actividades: actividades.map((a) => ({ id: String(a._id), titulo: a.titulo })),
+      categorias: categorias.map((c) => ({ nombre: c.nombre, color: c.color ?? null }))
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al armar el detalle de personas', error: error.message });
   }
 };

@@ -462,3 +462,91 @@ export function resumenPersona({ inscripciones, hoy = new Date(), meses = 12 }) 
     historial,
   };
 }
+
+/* ---------------- Personas en detalle ---------------- */
+
+/**
+ * Una fila por participante con todo lo que sirve para filtrar y contestar
+ * preguntas puntuales («¿cuántos extranjeros vinieron a Shabat y nunca a otra
+ * cosa?»). El filtrado lo hace la pantalla: son cientos de filas, y así cada
+ * filtro responde al instante.
+ *
+ * Lo del período (veces, propuestas, actividades, pagado) cuenta sólo el
+ * rango; el estado y la primera/última vez miran toda la historia.
+ *
+ * También arma la retención por cohorte: de quienes vinieron por primera vez
+ * en cada mes del rango, qué parte volvió en el mes siguiente, a los dos y a
+ * los tres.
+ */
+export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = new Date() }) {
+  const { inicio, fin } = limitesDias(desde, hasta);
+  const finEfectivo = fin < hoy ? fin : hoy;
+  const enRango = (f) => {
+    const t = new Date(f).getTime();
+    return t >= inicio.getTime() && t <= finEfectivo.getTime();
+  };
+
+  const porPersona = new Map();
+  for (const i of inscripciones) {
+    const k = String(i.userId);
+    if (!porPersona.has(k)) porPersona.set(k, []);
+    porPersona.get(k).push(i);
+  }
+
+  const filas = usuarios.map((u) => {
+    const propias = porPersona.get(String(u._id)) ?? [];
+    const participaciones = propias
+      .filter((i) => i.estado === 'aceptada' && new Date(i.fecha) <= hoy && i.asistencia !== 'falto')
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    const primera = participaciones.length ? new Date(participaciones[0].fecha) : null;
+    const ultima = participaciones.length ? new Date(participaciones[participaciones.length - 1].fecha) : null;
+    const enUltimos90 = participaciones.filter((p) => hoy - new Date(p.fecha) <= 90 * DIA_MS).length;
+    const delRango = participaciones.filter((p) => enRango(p.fecha));
+    const pagos = propias.filter((i) => i.pago?.estadoPago === 'aprobado' && enRango(i.fecha) && monedaDe(i) === 'ARS');
+
+    return {
+      id: String(u._id),
+      nombre: [u.nombre, u.apellido].filter(Boolean).join(' '),
+      email: u.email,
+      telefono: u.telefono ?? null,
+      edad: edadA(u.fechaNacimiento, hoy),
+      nacionalidad: u.nacionalidad ?? null,
+      residencia: u.residencia ?? null,
+      ciudad: u.ciudad ?? null,
+      comoSeEntero: u.comoSeEntero?.trim() || null,
+      idioma: u.idioma ?? 'es',
+      tipoDocumento: u.tipoDocumento ?? 'dni',
+      estadoCuenta: u.estado,
+      alta: u.createdAt,
+      estado: estadoPersona({ primera, ultima, enUltimos90, hoy }),
+      primeraVez: primera,
+      ultimaVez: ultima,
+      nuevaEnRango: Boolean(primera && enRango(primera)),
+      veces: delRango.length,
+      vecesTotal: participaciones.length,
+      categorias: [...new Set(delRango.flatMap((p) => p.actividad?.categorias ?? []))],
+      actividades: [...new Set(delRango.map((p) => String(p.activityId)))],
+      pagado: pagos.reduce((t, i) => t + montoPago(i), 0),
+    };
+  });
+
+  /* Cohortes por mes de primera visita. Un mes sólo se informa cuando ya
+     pasó entero (si no, todavía no se sabe si volvieron). */
+  const cohortes = mesesEntre(inicio, fin).map((mes) => {
+    const gente = filas.filter((f) => f.primeraVez && mesCalendario(f.primeraVez) === mes);
+    const despues = [1, 2, 3].map((n) => {
+      const objetivo = DateTime.fromISO(`${mes}-01`, { zone: 'utc' }).plus({ months: n });
+      if (objetivo.endOf('month').toJSDate() > hoy) return null;
+      const clave = objetivo.toFormat('yyyy-MM');
+      const volvieron = gente.filter((f) =>
+        (porPersona.get(f.id) ?? []).some(
+          (i) => i.estado === 'aceptada' && i.asistencia !== 'falto' && mesCalendario(i.fecha) === clave
+        )
+      ).length;
+      return porcentaje(volvieron, gente.length);
+    });
+    return { mes, personas: gente.length, despues };
+  });
+
+  return { personas: filas, cohortes };
+}

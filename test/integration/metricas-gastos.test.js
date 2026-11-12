@@ -113,3 +113,14 @@ describe('GET /api/admin/users/:id/metrics', () => {
     await request(app).get('/api/admin/users/000000000000000000000000/metrics').set('Authorization', bearerFor(admin)).expect(404);
   });
 });
+
+describe('GET /api/admin/metrics/people', () => {
+  it('sólo el equipo, con una fila por participante', async () => {
+    await createInscription(participant._id, activity._id, new Date('2026-01-09T00:00:00.000Z'), { estado: 'aceptada' });
+    await request(app).get('/api/admin/metrics/people?from=2026-01-01&to=2026-01-31').set('Authorization', bearerFor(participant)).expect(403);
+    const res = await request(app).get('/api/admin/metrics/people?from=2026-01-01&to=2026-01-31').set('Authorization', bearerFor(admin)).expect(200);
+    const fila = res.body.personas.find((p) => p.id === String(participant._id));
+    expect(fila).toMatchObject({ veces: 1 });
+    expect(res.body.actividades.some((a) => a.titulo === 'Cena de Shabat')).toBe(true);
+  });
+});

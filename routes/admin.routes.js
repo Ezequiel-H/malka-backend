@@ -3,6 +3,7 @@ import {
   getFirstInscriptionRepeatStats,
   getInscriptionStats,
   getMetrics,
+  getPeopleMetrics,
   getUserMetrics,
   getUpcomingBirthdays
 } from '../controllers/admin.controller.js';
@@ -20,6 +21,7 @@ router.get(
 );
 router.get('/birthdays', authenticate, requireAdmin, getUpcomingBirthdays);
 router.get('/metrics', authenticate, requireAdmin, getMetrics);
+router.get('/metrics/people', authenticate, requireAdmin, getPeopleMetrics);
 router.get('/users/:id/metrics', authenticate, requireAdmin, getUserMetrics);
 
 export default router;
