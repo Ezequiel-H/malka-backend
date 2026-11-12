@@ -158,9 +158,9 @@ export function planificarImportacion({ filas, usuarios, contactos, visitas }) {
     }
     const clave = clavePersona(f);
     let persona = porClave.get(clave) ?? (f.email ? porClave.get(`n:${normalizar(`${f.nombre} ${f.apellido}`)}`) : null);
-    if (persona) {
+    if (persona && persona.tipo !== 'nuevo') {
       reconocidas[persona.tipo === 'usuario' ? 'usuarios' : 'contactos'].add(persona.id);
-    } else {
+    } else if (!persona) {
       const nuevo = contactosNuevos.get(clave) ?? {
         clave,
         nombre: f.nombre || f.email.split('@')[0],
@@ -172,6 +172,11 @@ export function planificarImportacion({ filas, usuarios, contactos, visitas }) {
       if (!nuevo.fechaNacimiento && f.fechaNacimiento) nuevo.fechaNacimiento = f.fechaNacimiento;
       contactosNuevos.set(clave, nuevo);
       persona = { tipo: 'nuevo', id: clave };
+      /* La misma persona puede aparecer con otro mail más abajo (la planilla
+         agrupa por nombre): se la reconoce también por nombre y apellido. */
+      porClave.set(clave, persona);
+      const porNombre = `n:${normalizar(`${f.nombre} ${f.apellido}`)}`;
+      if (!porClave.has(porNombre)) porClave.set(porNombre, persona);
     }
     const quien = persona.tipo === 'usuario' ? `u:${persona.id}` : persona.tipo === 'contacto' ? `c:${persona.id}` : `n:${persona.id}`;
     const claveVisita = `${quien}|${normalizar(f.evento)}|${f.fecha}`;
