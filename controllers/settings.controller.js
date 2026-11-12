@@ -17,6 +17,7 @@ export const updateSettings = async (req, res) => {
       whatsappNumero,
       whatsappViajeMensaje,
       whatsappCumpleanosMensaje,
+      whatsappRegistroMensaje,
       plantillasWhatsApp,
     } = req.body;
     const settings = await Settings.getSettings();
@@ -29,6 +30,9 @@ export const updateSettings = async (req, res) => {
     }
     if (whatsappViajeMensaje !== undefined) {
       settings.whatsappViajeMensaje = whatsappViajeMensaje;
+    }
+    if (whatsappRegistroMensaje !== undefined) {
+      settings.whatsappRegistroMensaje = whatsappRegistroMensaje;
     }
     if (whatsappCumpleanosMensaje !== undefined) {
       settings.whatsappCumpleanosMensaje = whatsappCumpleanosMensaje;

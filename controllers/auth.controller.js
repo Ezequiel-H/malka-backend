@@ -1,4 +1,5 @@
 import User from '../models/User.model.js';
+import Settings from '../models/Settings.model.js';
 import { generateToken } from '../utils/generateToken.js';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
@@ -30,7 +31,10 @@ export const register = async (req, res) => {
       restriccionesAlimentarias,
       comoSeEntero,
       fechaNacimiento,
-      tags
+      tags,
+      nacionalidad,
+      residencia,
+      ciudad
     } = req.body;
 
     const dniNorm = normalizeDni(dni);
@@ -58,7 +62,10 @@ export const register = async (req, res) => {
       restriccionesAlimentarias: restriccionesAlimentarias || [],
       comoSeEntero: comoSeEntero || '',
       fechaNacimiento: assertValidBirthDate(fechaNacimiento),
-      tags: tagsList
+      tags: tagsList,
+      nacionalidad,
+      residencia,
+      ciudad: residencia === 'buenos_aires' ? undefined : ciudad
     });
 
     await user.save();
@@ -141,5 +148,23 @@ export const getCurrentUser = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener usuario:', error);
     res.status(500).json({ message: 'Error al obtener usuario', error: error.message });
+  }
+};
+
+/**
+ * GET /api/auth/registro-whatsapp — a dónde y qué escribir para terminar el
+ * registro quien no vive en Buenos Aires. El número y el mensaje salen de
+ * Ajustes; las variables ({nombre}, {ciudad}) las completa el front.
+ */
+export const getRegistroWhatsapp = async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    res.json({
+      completarPorWhatsapp: req.user.role === 'participant' && Boolean(req.user.residencia) && req.user.residencia !== 'buenos_aires',
+      numero: settings.whatsappNumero,
+      mensaje: settings.whatsappRegistroMensaje
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al buscar el contacto de WhatsApp', error: error.message });
   }
 };

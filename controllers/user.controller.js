@@ -273,7 +273,10 @@ export const updateMyProfile = async (req, res) => {
       restriccionesAlimentarias,
       comoSeEntero,
       fechaNacimiento,
-      tags
+      tags,
+      nacionalidad,
+      residencia,
+      ciudad
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -318,6 +321,10 @@ export const updateMyProfile = async (req, res) => {
     if (tags !== undefined) {
       user.tags = Array.isArray(tags) ? tags : user.tags;
     }
+    if (nacionalidad !== undefined) user.nacionalidad = nacionalidad || undefined;
+    if (residencia !== undefined) user.residencia = residencia || undefined;
+    if (ciudad !== undefined) user.ciudad = ciudad || undefined;
+    if (user.residencia === 'buenos_aires') user.ciudad = undefined;
 
     await user.save();
 

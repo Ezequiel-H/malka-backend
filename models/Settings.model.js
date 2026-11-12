@@ -22,6 +22,15 @@ const settingsSchema = new mongoose.Schema(
       default:
         'Hola! Soy {nombre}. Me inscribí al viaje "{actividad}" ({fecha}) y quiero coordinar el pago.',
     },
+    /* Mensaje prellenado que manda quien se registra y NO vive en Buenos
+       Aires, para terminar el registro por WhatsApp. Variables: {nombre},
+       {ciudad}. */
+    whatsappRegistroMensaje: {
+      type: String,
+      trim: true,
+      default:
+        'Hola! Soy {nombre}, me acabo de registrar en Malka y vivo en {ciudad}. ¿Qué más necesitan para terminar mi registro?',
+    },
     /* Saludo de cumpleaños que el ADMIN manda desde el panel.
        Variables: {nombre}, {edad}. El default es sobrio a propósito: es un
        mensaje que sale a nombre de la casa, y el admin lo edita a su gusto. */

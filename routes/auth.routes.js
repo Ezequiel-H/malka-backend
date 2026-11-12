@@ -1,6 +1,7 @@
 import express from 'express';
+import { RESIDENCIAS } from '../models/User.model.js';
 import { body } from 'express-validator';
-import { register, login, getCurrentUser } from '../controllers/auth.controller.js';
+import { register, login, getCurrentUser, getRegistroWhatsapp } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { assertValidBirthDate } from '../utils/calendarDate.js';
 
@@ -27,7 +28,16 @@ const registerValidation = [
     }),
   body('tags').optional().isArray(),
   body('restriccionesAlimentarias').optional().isArray(),
-  body('comoSeEntero').optional().trim()
+  body('comoSeEntero').optional().trim(),
+  body('nacionalidad').trim().toUpperCase().isISO31661Alpha2().withMessage('Elegí tu nacionalidad'),
+  body('residencia').isIn(RESIDENCIAS).withMessage('Contanos dónde vivís'),
+  body('ciudad')
+    .trim()
+    .isLength({ max: 80 })
+    .custom((ciudad, { req }) => {
+      if (req.body.residencia !== 'buenos_aires' && !ciudad) throw new Error('Contanos en qué ciudad vivís');
+      return true;
+    })
 ];
 
 const loginValidation = [
@@ -38,6 +48,7 @@ const loginValidation = [
 router.post('/register', registerValidation, register);
 router.post('/login', loginValidation, login);
 router.get('/me', authenticate, getCurrentUser);
+router.get('/registro-whatsapp', authenticate, getRegistroWhatsapp);
 
 export default router;
 
