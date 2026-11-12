@@ -51,6 +51,26 @@ const gastoSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Activity'
     },
+    /* Un evento con nombre propio, para lo que no es una actividad de la app
+       (lo que viene de la planilla histórica). */
+    evento: {
+      type: String,
+      trim: true,
+      maxlength: 160
+    },
+    /* La mayoría son gastos; «ingreso» es plata que entró por fuera de los
+       pagos de la app (la recaudación de un evento en efectivo, una
+       donación). Las métricas lo suman a lo recaudado. */
+    tipo: {
+      type: String,
+      enum: ['gasto', 'ingreso'],
+      default: 'gasto'
+    },
+    origen: {
+      type: String,
+      enum: ['manual', 'importado'],
+      default: 'manual'
+    },
     notas: {
       type: String,
       trim: true,
@@ -66,6 +86,7 @@ const gastoSchema = new mongoose.Schema(
 
 gastoSchema.index({ fecha: 1 });
 gastoSchema.index({ actividadId: 1, fecha: 1 });
+gastoSchema.index({ evento: 1, fecha: 1 });
 
 const Gasto = mongoose.model('Gasto', gastoSchema);
 

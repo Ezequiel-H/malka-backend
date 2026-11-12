@@ -4,7 +4,7 @@ import Activity from '../models/Activity.model.js';
 import { limitesDias } from '../utils/metricas.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const CAMPOS = ['fecha', 'concepto', 'categoria', 'monto', 'moneda', 'cantidad', 'unidad', 'actividadId', 'notas'];
+const CAMPOS = ['fecha', 'concepto', 'categoria', 'monto', 'moneda', 'cantidad', 'unidad', 'actividadId', 'evento', 'tipo', 'notas'];
 
 /* Lo que llega del formulario, limpio: vacíos a undefined y números como números. */
 const leerCuerpo = (body) => {
@@ -34,6 +34,7 @@ const validar = async (datos, { parcial = false } = {}) => {
   }
   if (datos.categoria !== undefined && !CATEGORIAS_GASTO.includes(datos.categoria)) return 'Categoría inválida';
   if (datos.moneda !== undefined && !['ARS', 'USD'].includes(datos.moneda)) return 'Moneda inválida';
+  if (datos.tipo !== undefined && !['gasto', 'ingreso'].includes(datos.tipo)) return 'Tipo inválido';
   if (datos.actividadId !== undefined) {
     if (!mongoose.Types.ObjectId.isValid(datos.actividadId)) return 'Actividad inválida';
     if (!(await Activity.exists({ _id: datos.actividadId }))) return 'La actividad no existe';
@@ -46,7 +47,7 @@ const conActividad = (consulta) => consulta.populate('actividadId', 'titulo').po
 /** GET /api/gastos?from=YYYY-MM-DD&to=YYYY-MM-DD&actividadId=…&categoria=… */
 export const listGastos = async (req, res) => {
   try {
-    const { from, to, actividadId, categoria } = req.query;
+    const { from, to, actividadId, categoria, tipo } = req.query;
     const filtro = {};
     if (from || to) {
       if (!DATE_RE.test(from || '') || !DATE_RE.test(to || '')) {
@@ -59,6 +60,8 @@ export const listGastos = async (req, res) => {
       if (!mongoose.Types.ObjectId.isValid(actividadId)) return res.status(400).json({ message: 'Actividad inválida' });
       filtro.actividadId = actividadId;
     }
+    if (tipo === 'gasto') filtro.tipo = { $ne: 'ingreso' };
+    else if (tipo === 'ingreso') filtro.tipo = 'ingreso';
     if (categoria) {
       const categorias = String(categoria).split(',').filter((c) => CATEGORIAS_GASTO.includes(c));
       if (categorias.length) filtro.categoria = { $in: categorias };

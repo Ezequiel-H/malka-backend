@@ -113,7 +113,7 @@ const monedaDe = (i) => i.actividad?.moneda ?? 'ARS';
  * @param {string} p.hasta         YYYY-MM-DD
  * @param {Date}   p.hoy
  */
-export function calcularMetricas({ usuarios, inscripciones, gastos, categorias = [], desde, hasta, hoy = new Date() }) {
+export function calcularMetricas({ usuarios, inscripciones, gastos, ingresos = [], categorias = [], desde, hasta, hoy = new Date() }) {
   const { inicio, fin } = limitesDias(desde, hasta);
   const finEfectivo = fin < hoy ? fin : hoy;
   const enRango = (fecha) => {
@@ -179,6 +179,14 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
   });
   const registrosPorMes = contarPor(registrosEnRango, (u) => mesArgentina(u.createdAt));
 
+  const usuarioPorId = new Map(usuarios.map((u) => [id(u._id), u]));
+  /* La edad de alguien el día del encuentro, como la calcula la planilla. */
+  const edadEnEncuentro = (p) => edadA(usuarioPorId.get(id(p.userId))?.fechaNacimiento, new Date(p.fecha));
+  const promedioEdad = (lista) => {
+    const edades = lista.map(edadEnEncuentro).filter((e) => e !== null);
+    return edades.length ? Math.round((edades.reduce((a, b) => a + b, 0) / edades.length) * 10) / 10 : null;
+  };
+
   /* ---- Por mes ---- */
   const delRangoPorMes = new Map(meses.map((m) => [m, []]));
   for (const p of delRango) delRangoPorMes.get(mesCalendario(p.fecha))?.push(p);
@@ -192,6 +200,8 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
       personas: personas.size,
       nuevas: nuevasDelMes.length,
       registros: registrosPorMes.get(mes) ?? 0,
+      edadPromedio: promedioEdad(lista),
+      frecuencia: personas.size ? Math.round((lista.length / personas.size) * 100) / 100 : null,
     };
   });
 
@@ -224,9 +234,22 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
   );
 
   /* ---- Edad ---- */
-  const usuarioPorId = new Map(usuarios.map((u) => [id(u._id), u]));
   const edades = [...participantes].map((u) => edadA(usuarioPorId.get(u)?.fechaNacimiento, hoy)).filter((e) => e !== null);
+  /* Edad promedio por propuesta, al día de cada encuentro (la hoja de
+     edades de la planilla). */
+  const porPropuesta = new Map();
+  for (const p of delRango) for (const c of p.actividad?.categorias ?? []) {
+    if (!porPropuesta.has(c)) porPropuesta.set(c, []);
+    porPropuesta.get(c).push(p);
+  }
+  const edadPorPropuesta = [...porPropuesta.entries()]
+    .map(([nombre, lista]) => ({ nombre, promedio: promedioEdad(lista), personas: new Set(lista.map((p) => id(p.userId))).size }))
+    .filter((e) => e.promedio !== null)
+    .sort((a, b) => b.personas - a.personas)
+    .slice(0, 8);
+
   const edad = {
+    porPropuesta: edadPorPropuesta,
     promedio: edades.length ? Math.round((edades.reduce((a, b) => a + b, 0) / edades.length) * 10) / 10 : null,
     conDato: edades.length,
     sinDato: participantes.size - edades.length,
@@ -252,7 +275,11 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
   /* ---- Plata ---- */
   const pagos = aceptadasDelRango.filter((i) => i.pago?.estadoPago === 'aprobado');
   const pagosArs = pagos.filter((i) => monedaDe(i) === 'ARS');
-  const recaudado = pagosArs.reduce((total, i) => total + montoPago(i), 0);
+  /* Lo que entró por fuera de los pagos de la app (la recaudación cargada a
+     mano o importada de la planilla). */
+  const ingresosArs = ingresos.filter((g) => (g.moneda ?? 'ARS') === 'ARS' && enRango(g.fecha));
+  const recaudadoIngresos = ingresosArs.reduce((t, g) => t + g.monto, 0);
+  const recaudado = pagosArs.reduce((total, i) => total + montoPago(i), 0) + recaudadoIngresos;
   const recaudadoUsd = pagos.filter((i) => monedaDe(i) === 'USD').reduce((total, i) => total + montoPago(i), 0);
   const pagadoPorPersona = sumarPor(pagosArs, (i) => id(i.userId), montoPago);
 
@@ -264,6 +291,12 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
     fila.pagos += 1;
     porActividadMapa.set(k, fila);
   }
+  for (const g of ingresosArs) {
+    const k = String(g.actividadId ?? 'casa');
+    const fila = porActividadMapa.get(k) ?? { actividadId: k, titulo: g.actividadTitulo ?? 'Ingresos de la casa', recaudado: 0, pagos: 0 };
+    fila.recaudado += g.monto;
+    porActividadMapa.set(k, fila);
+  }
   const porActividad = [...porActividadMapa.values()].sort((a, b) => b.recaudado - a.recaudado).slice(0, 8);
 
   const gastosArs = gastos.filter((g) => (g.moneda ?? 'ARS') === 'ARS');
@@ -271,7 +304,7 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
   const gastosPorCategoria = [...sumarPor(gastosArs, (g) => g.categoria ?? 'otros', (g) => g.monto).entries()]
     .map(([categoria, total]) => ({ categoria, total }))
     .sort((a, b) => b.total - a.total);
-  const recaudadoPorMes = sumarPor(pagosArs, (i) => mesCalendario(i.fecha), montoPago);
+  const recaudadoPorMes = sumarPor([...pagosArs, ...ingresosArs], (i) => mesCalendario(i.fecha), (i) => ('monto' in i && !('pago' in i) ? i.monto : montoPago(i)));
   const gastadoPorMes = sumarPor(gastosArs, (g) => mesCalendario(g.fecha), (g) => g.monto);
 
   /* Costo por encuentro: los gastos atados a una actividad, agrupados por el
@@ -287,10 +320,41 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
     const e = encuentros.get(`${id(i.activityId)}|${diaCalendario(i.fecha)}`);
     if (e) e.recaudado += montoPago(i);
   }
-  for (const p of delRango) {
-    const e = encuentros.get(`${id(p.activityId)}|${diaCalendario(p.fecha)}`);
-    if (e) e.personas += 1;
+  for (const g of ingresosArs.filter((x) => x.actividadId)) {
+    const k = `${id(g.actividadId)}|${diaCalendario(g.fecha)}`;
+    const e = encuentros.get(k) ?? { actividadId: id(g.actividadId), titulo: g.actividadTitulo ?? 'Sin título', costo: 0, recaudado: 0, personas: 0 };
+    e.recaudado += g.monto;
+    encuentros.set(k, e);
   }
+  const gentePorEncuentro = new Map();
+  for (const p of delRango) {
+    const k = `${id(p.activityId)}|${diaCalendario(p.fecha)}`;
+    const e = encuentros.get(k);
+    if (e) e.personas += 1;
+    if (!gentePorEncuentro.has(k)) gentePorEncuentro.set(k, []);
+    gentePorEncuentro.get(k).push(p);
+  }
+  /* Evento por evento, con su plata y su gente (las hojas de gastos por
+     evento de la planilla): se filtra por mes y categoría en la pantalla. */
+  const porEvento = [...encuentros.entries()]
+    .map(([k, e]) => {
+      const [, dia] = k.split('|');
+      const gente = gentePorEncuentro.get(k) ?? [];
+      const categoria = gente[0]?.actividad?.categorias?.[0] ?? null;
+      return {
+        actividadId: e.actividadId,
+        titulo: e.titulo,
+        fecha: dia,
+        mes: dia.slice(0, 7),
+        categoria,
+        costo: e.costo,
+        recaudado: e.recaudado,
+        neto: e.recaudado - e.costo,
+        personas: new Set(gente.map((p) => id(p.userId))).size,
+        edadPromedio: promedioEdad(gente),
+      };
+    })
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
   const costoPorActividad = new Map();
   for (const e of encuentros.values()) {
     const fila = costoPorActividad.get(e.actividadId) ?? { actividadId: e.actividadId, titulo: e.titulo, encuentros: 0, costo: 0, recaudado: 0, personas: 0 };
@@ -336,6 +400,10 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
         matriz,
       },
       asistencia,
+      sinAnotarse: {
+        veces: delRango.filter((p) => p.sinAnotarse).length,
+        personas: new Set(delRango.filter((p) => p.sinAnotarse).map((p) => id(p.userId))).size,
+      },
     },
     plata: {
       moneda: 'ARS',
@@ -354,6 +422,7 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, categorias =
       cobertura: porcentaje(recaudado, gastado),
       porMes: meses.map((mes) => ({ mes, recaudado: recaudadoPorMes.get(mes) ?? 0, gastado: gastadoPorMes.get(mes) ?? 0 })),
       costoPorEncuentro,
+      porEvento,
     },
   };
 }
@@ -466,6 +535,14 @@ export function resumenPersona({ inscripciones, hoy = new Date(), meses = 12 }) 
 /* ---------------- Personas en detalle ---------------- */
 
 /**
+ * Los «eventos clave» de la planilla de Malka: los Shabbat, los Shiurim y la
+ * Ieshiva. Son los que dicen si alguien es parte del núcleo, más que venir
+ * a una fiesta.
+ */
+const CLAVE_RE = /shabat|shabbat|shiur|ieshiva|yeshiva/i;
+export const esEventoClave = (p) => CLAVE_RE.test(p.actividad?.titulo ?? '') || (p.actividad?.categorias ?? []).some((c) => CLAVE_RE.test(c));
+
+/**
  * Una fila por participante con todo lo que sirve para filtrar y contestar
  * preguntas puntuales («¿cuántos extranjeros vinieron a Shabat y nunca a otra
  * cosa?»). El filtrado lo hace la pantalla: son cientos de filas, y así cada
@@ -503,6 +580,7 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
     const enUltimos90 = participaciones.filter((p) => hoy - new Date(p.fecha) <= 90 * DIA_MS).length;
     const delRango = participaciones.filter((p) => enRango(p.fecha));
     const pagos = propias.filter((i) => i.pago?.estadoPago === 'aprobado' && enRango(i.fecha) && monedaDe(i) === 'ARS');
+    const ultimaParticipacion = participaciones[participaciones.length - 1];
 
     return {
       id: String(u._id),
@@ -527,6 +605,10 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
       categorias: [...new Set(delRango.flatMap((p) => p.actividad?.categorias ?? []))],
       actividades: [...new Set(delRango.map((p) => String(p.activityId)))],
       pagado: pagos.reduce((t, i) => t + montoPago(i), 0),
+      ultimoEncuentro: ultimaParticipacion?.actividad?.titulo ?? null,
+      vecesClave: delRango.filter(esEventoClave).length,
+      sinAnotarse: delRango.filter((p) => p.sinAnotarse).length,
+      esContacto: Boolean(u.esContacto),
     };
   });
 
@@ -553,7 +635,7 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
 
 /* ---------------- Actividades ---------------- */
 
-const resumenDeInscripciones = (propias, { hoy, enRango, primeraVezMalka, gastosPorDia, cupo }) => {
+const resumenDeInscripciones = (propias, { hoy, enRango, primeraVezMalka, gastosPorDia, ingresosPorDia = new Map(), cupo }) => {
   const delRango = propias.filter((i) => enRango(i.fecha));
   const pasadas = delRango.filter((i) => new Date(i.fecha) <= hoy);
   const aceptadas = pasadas.filter((i) => i.estado === 'aceptada');
@@ -571,7 +653,9 @@ const resumenDeInscripciones = (propias, { hoy, enRango, primeraVezMalka, gastos
   const vino = aceptadas.filter((i) => i.asistencia === 'vino').length;
   const falto = aceptadas.filter((i) => i.asistencia === 'falto').length;
   const pagos = delRango.filter((i) => i.pago?.estadoPago === 'aprobado' && monedaDe(i) === 'ARS');
-  const recaudado = pagos.reduce((t, i) => t + montoPago(i), 0);
+  const sumaDelRango = (porDia) =>
+    [...porDia.entries()].filter(([dia]) => enRango(new Date(`${dia}T00:00:00.000Z`))).reduce((t, [, m]) => t + m, 0);
+  const recaudado = pagos.reduce((t, i) => t + montoPago(i), 0) + sumaDelRango(ingresosPorDia);
   const costo = [...gastosPorDia.entries()].filter(([dia]) => enRango(new Date(`${dia}T00:00:00.000Z`))).reduce((t, [, m]) => t + m, 0);
   const porEncuentro = encuentros.length ? participaciones.length / encuentros.length : null;
   return {
@@ -602,13 +686,16 @@ const prepararActividades = ({ inscripciones, gastos, hoy }) => {
     const actual = primeraVezMalka.get(k);
     if (!actual || new Date(i.fecha) < actual.fecha) primeraVezMalka.set(k, { fecha: new Date(i.fecha), id: String(i._id) });
   }
+  /* Gastos e ingresos (lo cobrado por fuera de la app) por actividad y día. */
   const gastosPorActividad = new Map();
+  const ingresosPorActividad = new Map();
   for (const g of gastos) {
     if (!g.actividadId || (g.moneda ?? 'ARS') !== 'ARS') continue;
+    const destino = g.tipo === 'ingreso' ? ingresosPorActividad : gastosPorActividad;
     const k = String(g.actividadId);
-    if (!gastosPorActividad.has(k)) gastosPorActividad.set(k, new Map());
+    if (!destino.has(k)) destino.set(k, new Map());
     const dia = diaCalendario(g.fecha);
-    gastosPorActividad.get(k).set(dia, (gastosPorActividad.get(k).get(dia) ?? 0) + g.monto);
+    destino.get(k).set(dia, (destino.get(k).get(dia) ?? 0) + g.monto);
   }
   const porActividad = new Map();
   for (const i of inscripciones) {
@@ -616,7 +703,7 @@ const prepararActividades = ({ inscripciones, gastos, hoy }) => {
     if (!porActividad.has(k)) porActividad.set(k, []);
     porActividad.get(k).push(i);
   }
-  return { primeraVezMalka, gastosPorActividad, porActividad };
+  return { primeraVezMalka, gastosPorActividad, ingresosPorActividad, porActividad };
 };
 
 /**
@@ -630,7 +717,7 @@ export function metricasActividades({ actividades, inscripciones, gastos, desde,
     const t = new Date(f).getTime();
     return t >= inicio.getTime() && t <= fin.getTime();
   };
-  const { primeraVezMalka, gastosPorActividad, porActividad } = prepararActividades({ inscripciones, gastos, hoy });
+  const { primeraVezMalka, gastosPorActividad, ingresosPorActividad, porActividad } = prepararActividades({ inscripciones, gastos, hoy });
   return actividades
     .map((a) => ({
       id: String(a._id),
@@ -644,6 +731,7 @@ export function metricasActividades({ actividades, inscripciones, gastos, desde,
         enRango,
         primeraVezMalka,
         gastosPorDia: gastosPorActividad.get(String(a._id)) ?? new Map(),
+        ingresosPorDia: ingresosPorActividad.get(String(a._id)) ?? new Map(),
         cupo: a.cupo,
       }),
     }))
@@ -661,9 +749,10 @@ export function metricasActividad({ actividad, inscripciones, todas, gastos, usu
     return t >= inicio.getTime() && t <= fin.getTime();
   };
   const id = String(actividad._id);
-  const { primeraVezMalka, gastosPorActividad } = prepararActividades({ inscripciones: todas, gastos, hoy });
+  const { primeraVezMalka, gastosPorActividad, ingresosPorActividad } = prepararActividades({ inscripciones: todas, gastos, hoy });
   const gastosPorDia = gastosPorActividad.get(id) ?? new Map();
-  const resumen = resumenDeInscripciones(inscripciones, { hoy, enRango, primeraVezMalka, gastosPorDia, cupo: actividad.cupo });
+  const ingresosPorDia = ingresosPorActividad.get(id) ?? new Map();
+  const resumen = resumenDeInscripciones(inscripciones, { hoy, enRango, primeraVezMalka, gastosPorDia, ingresosPorDia, cupo: actividad.cupo });
 
   const delRango = inscripciones.filter((i) => enRango(i.fecha));
   const porDia = new Map();
@@ -686,7 +775,9 @@ export function metricasActividad({ actividad, inscripciones, todas, gastos, usu
         nuevas: aceptadas.filter((i) => primeraVezMalka.get(String(i.userId))?.id === String(i._id)).length,
         enEspera: lista.filter((i) => i.estado === 'en_espera').length,
         canceladas: lista.filter((i) => i.estado === 'cancelada').length,
-        recaudado: lista.filter((i) => i.pago?.estadoPago === 'aprobado' && monedaDe(i) === 'ARS').reduce((t, i) => t + montoPago(i), 0),
+        recaudado:
+          lista.filter((i) => i.pago?.estadoPago === 'aprobado' && monedaDe(i) === 'ARS').reduce((t, i) => t + montoPago(i), 0) +
+          (ingresosPorDia.get(dia) ?? 0),
         costo: gastosPorDia.get(dia) ?? 0,
       };
     });

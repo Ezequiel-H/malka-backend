@@ -12,6 +12,7 @@ import tagRoutes from './routes/tag.routes.js';
 import privateTagRoutes from './routes/privateTag.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import gastoRoutes from './routes/gasto.routes.js';
+import historialRoutes from './routes/historial.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import pushRoutes from './routes/push.routes.js';
 
@@ -40,6 +41,7 @@ export function createApp() {
   app.use('/api/tags-privados', privateTagRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/gastos', gastoRoutes);
+  app.use('/api/historial', historialRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/push', pushRoutes);
 
