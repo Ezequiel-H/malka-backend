@@ -103,6 +103,7 @@ describe('Exportación personalizada de inscriptos', () => {
     expect(res.body.filas).toEqual([['ana-exp@test.local', 'Ana', 'Aceptada']]);
     expect(res.body.total).toBe(1);
     expect(res.body.porEstado).toMatchObject({ aceptada: 1, pendiente: 1, cancelada: 0 });
+    expect(res.body.estados).toEqual(['aceptada']);
   });
 
   it('ignora columnas desconocidas sin romper', async () => {

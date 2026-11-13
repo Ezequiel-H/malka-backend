@@ -701,6 +701,8 @@ export const exportInscriptionsToExcel = async (req, res) => {
       return res.json({
         columnas: columnas.map((clave) => ({ clave, header: EXPORT_COLUMNS[clave].header })),
         filas: inscriptions.map((i) => columnas.map((clave) => EXPORT_COLUMNS[clave].value(i))),
+        // El estado de cada fila, para que el modal filtre sin volver a pedir.
+        estados: inscriptions.map((i) => i.estado),
         total: inscriptions.length,
         porEstado,
       });
