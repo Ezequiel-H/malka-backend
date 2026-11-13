@@ -98,6 +98,13 @@ const userSchema = new mongoose.Schema({
     enum: TIPOS_DOCUMENTO,
     default: 'dni'
   },
+  /* El Panel a medida (sólo equipo): bloques, orden, ancho y opciones. Lo
+     valida utils/inicioPanel.js; sin guardar, vale el de siempre. */
+  inicioPanel: {
+    type: mongoose.Schema.Types.Mixed,
+    default: undefined,
+    select: false
+  },
   /* Código de país ISO (AR, IL, UY…): el nombre se arma en el front en el
      idioma de quien lo mira. */
   nacionalidad: {

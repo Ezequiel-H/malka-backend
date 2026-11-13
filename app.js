@@ -13,6 +13,7 @@ import privateTagRoutes from './routes/privateTag.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import actividadesResumenRoutes from './routes/actividadesResumen.routes.js';
 import hoyRoutes from './routes/hoy.routes.js';
+import inicioRoutes from './routes/inicio.routes.js';
 import gastoRoutes from './routes/gasto.routes.js';
 import historialRoutes from './routes/historial.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api/tags-privados', privateTagRoutes);
   app.use('/api/admin/actividades-resumen', actividadesResumenRoutes);
   app.use('/api/admin/hoy', hoyRoutes);
+  app.use('/api/admin/inicio', inicioRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/gastos', gastoRoutes);
   app.use('/api/historial', historialRoutes);
