@@ -683,16 +683,28 @@ export const exportInscriptionsToExcel = async (req, res) => {
         .filter(Boolean);
 
     const estados = parseList(req.query.estados).filter((e) => ESTADO_LABELS[e]);
-    if (estados.length > 0) {
-      query.estado = { $in: estados };
-    }
 
-    let columnas = parseList(req.query.columnas).filter((c) => EXPORT_COLUMNS[c]);
+    // El orden de las columnas es el que llega: la persona lo arma arrastrando.
+    let columnas = [...new Set(parseList(req.query.columnas).filter((c) => EXPORT_COLUMNS[c]))];
     if (columnas.length === 0) columnas = DEFAULT_COLUMNS;
 
-    const inscriptions = await Inscription.find(query)
+    const todas = await Inscription.find(query)
       .populate('userId', 'nombre apellido email telefono dni fechaNacimiento tags restriccionesAlimentarias')
       .sort({ fechaInscripcion: -1 });
+    const inscriptions = estados.length > 0 ? todas.filter((i) => estados.includes(i.estado)) : todas;
+
+    /* `formato=json` devuelve lo mismo que iría al Excel (columnas y filas ya
+       resueltas), más cuántas hay en cada estado: así la vista previa, el CSV
+       y «Copiar» del modal salen idénticos a la planilla. */
+    if (req.query.formato === 'json') {
+      const porEstado = Object.fromEntries(Object.keys(ESTADO_LABELS).map((e) => [e, todas.filter((i) => i.estado === e).length]));
+      return res.json({
+        columnas: columnas.map((clave) => ({ clave, header: EXPORT_COLUMNS[clave].header })),
+        filas: inscriptions.map((i) => columnas.map((clave) => EXPORT_COLUMNS[clave].value(i))),
+        total: inscriptions.length,
+        porEstado,
+      });
+    }
 
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();

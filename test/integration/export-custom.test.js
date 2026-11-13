@@ -88,6 +88,23 @@ describe('Exportación personalizada de inscriptos', () => {
     expect(ws.rowCount).toBe(3); // header + 2 inscripciones
   });
 
+  it('respeta el orden de columnas pedido y la vista previa en json sale igual', async () => {
+    const act = await createActivity(admin._id);
+    await createInscription(ana._id, act._id, act.fecha, { estado: 'aceptada' });
+    await createInscription(beto._id, act._id, act.fecha, { estado: 'pendiente' });
+    const ws = await downloadWorkbook(`/api/activities/${act._id}/export?columnas=email,nombre,estado`);
+    expect(ws.getRow(1).values.slice(1)).toEqual(['Email', 'Nombre', 'Estado']);
+
+    const res = await request(app)
+      .get(`/api/activities/${act._id}/export?columnas=email,nombre,estado&estados=aceptada&formato=json`)
+      .set('Authorization', bearerFor(admin))
+      .expect(200);
+    expect(res.body.columnas.map((c) => c.header)).toEqual(['Email', 'Nombre', 'Estado']);
+    expect(res.body.filas).toEqual([['ana-exp@test.local', 'Ana', 'Aceptada']]);
+    expect(res.body.total).toBe(1);
+    expect(res.body.porEstado).toMatchObject({ aceptada: 1, pendiente: 1, cancelada: 0 });
+  });
+
   it('ignora columnas desconocidas sin romper', async () => {
     const act = await createActivity(admin._id);
     await createInscription(ana._id, act._id, act.fecha, { estado: 'aceptada' });
