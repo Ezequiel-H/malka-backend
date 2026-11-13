@@ -173,7 +173,10 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, ingresos = [
   const frecuentes = [...porPersonaEnRango.values()].filter((n) => n >= UMBRAL_FRECUENTE).length;
 
   /* ---- Registros ---- */
-  const registrosEnRango = usuarios.filter((u) => {
+  /* Sólo cuentas de la app: un contacto (de la planilla o cargado a mano) no
+     se registró, y su fecha de alta es la de la carga. */
+  const cuentas = usuarios.filter((u) => !u.esContacto);
+  const registrosEnRango = cuentas.filter((u) => {
     const t = new Date(u.createdAt).getTime();
     return t >= inicio.getTime() && t <= fin.getTime();
   });
@@ -261,7 +264,9 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, ingresos = [
   };
 
   /* ---- Asistencia: inscriptos vs. los que vinieron ---- */
-  const aceptadasDelRango = pasadas.filter((i) => enRango(i.fecha));
+  /* Sólo inscripciones de la app: las visitas del historial ya son gente
+     que vino, no hay asistencia que tomar. */
+  const aceptadasDelRango = pasadas.filter((i) => enRango(i.fecha) && !i.origen);
   const vinieron = aceptadasDelRango.filter((i) => i.asistencia === 'vino').length;
   const faltaron = aceptadasDelRango.filter((i) => i.asistencia === 'falto').length;
   const asistencia = {
@@ -381,7 +386,7 @@ export function calcularMetricas({ usuarios, inscripciones, gastos, ingresos = [
   return {
     rango: { desde, hasta },
     personas: {
-      registrados: usuarios.length,
+      registrados: cuentas.length,
       registrosEnRango: registrosEnRango.length,
       participantes: participantes.size,
       nuevos: nuevos.length,
