@@ -575,6 +575,9 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
     porPersona.get(k).push(i);
   }
 
+  /* Los últimos 8 meses (el actual incluido), para la barrita de cada persona. */
+  const ultimos8 = Array.from({ length: 8 }, (_, i) => DateTime.fromJSDate(hoy, { zone: 'utc' }).minus({ months: 7 - i }).toFormat('yyyy-MM'));
+
   const filas = usuarios.map((u) => {
     const propias = porPersona.get(String(u._id)) ?? [];
     const participaciones = propias
@@ -614,6 +617,7 @@ export function personasDetalle({ usuarios, inscripciones, desde, hasta, hoy = n
       vecesClave: delRango.filter(esEventoClave).length,
       sinAnotarse: delRango.filter((p) => p.sinAnotarse).length,
       esContacto: Boolean(u.esContacto),
+      ultimosMeses: ultimos8.map((mes) => participaciones.filter((p) => mesCalendario(p.fecha) === mes).length),
     };
   });
 

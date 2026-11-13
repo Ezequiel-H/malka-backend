@@ -220,3 +220,21 @@ describe('métricas por actividad', () => {
     expect(r.habituales[0]).toMatchObject({ nombre: 'Ana', veces: 2 });
   });
 });
+
+describe('personasDetalle · ultimosMeses', () => {
+  it('cuenta las veces de cada uno de los últimos 8 meses, el actual al final', async () => {
+    const { personasDetalle } = await import('../../utils/metricas.js');
+    const hoy = new Date('2026-11-13T12:00:00Z');
+    const usuarios = [{ _id: 'u1', nombre: 'Ana', apellido: 'Paz', createdAt: new Date('2025-01-01') }];
+    const act = { _id: 'a1', titulo: 'Shabbat', categorias: [] };
+    const i = (fecha) => ({ _id: fecha, userId: 'u1', activityId: 'a1', actividad: act, fecha: new Date(fecha), estado: 'aceptada' });
+    const { personas } = personasDetalle({
+      usuarios,
+      inscripciones: [i('2026-11-06'), i('2026-11-01'), i('2026-04-10'), i('2026-02-10')],
+      desde: '2026-01-01',
+      hasta: '2026-11-13',
+      hoy,
+    });
+    expect(personas[0].ultimosMeses).toEqual([1, 0, 0, 0, 0, 0, 0, 2]);
+  });
+});
