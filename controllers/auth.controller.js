@@ -1,10 +1,12 @@
 import User from '../models/User.model.js';
+import { normalizarDocumento } from '../utils/documento.js';
+import Settings from '../models/Settings.model.js';
 import { generateToken } from '../utils/generateToken.js';
 import { validationResult } from 'express-validator';
 import { messageFromMongoDuplicate } from '../utils/mongoDuplicate.js';
 import { assertValidBirthDate } from '../utils/calendarDate.js';
 
-const normalizeDni = (v) => String(v ?? '').replace(/\s/g, '').trim();
+const normalizeDni = normalizarDocumento;
 const normalizePhone = (v) => String(v ?? '').replace(/\s/g, '').trim();
 const sanitizeUserForParticipant = (userDoc) => {
   const user = typeof userDoc?.toObject === 'function' ? userDoc.toObject() : userDoc;
@@ -30,7 +32,12 @@ export const register = async (req, res) => {
       restriccionesAlimentarias,
       comoSeEntero,
       fechaNacimiento,
-      tags
+      tags,
+      nacionalidad,
+      residencia,
+      ciudad,
+      idioma,
+      tipoDocumento
     } = req.body;
 
     const dniNorm = normalizeDni(dni);
@@ -58,7 +65,12 @@ export const register = async (req, res) => {
       restriccionesAlimentarias: restriccionesAlimentarias || [],
       comoSeEntero: comoSeEntero || '',
       fechaNacimiento: assertValidBirthDate(fechaNacimiento),
-      tags: tagsList
+      tags: tagsList,
+      nacionalidad,
+      residencia,
+      ciudad: residencia === 'buenos_aires' ? undefined : ciudad,
+      idioma,
+      tipoDocumento: tipoDocumento === 'pasaporte' ? 'pasaporte' : 'dni'
     });
 
     await user.save();
@@ -78,7 +90,8 @@ export const register = async (req, res) => {
         fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
-        tags: user.tags
+        tags: user.tags,
+        idioma: user.idioma
       }
     });
   } catch (error) {
@@ -123,7 +136,8 @@ export const login = async (req, res) => {
         fechaNacimiento: user.fechaNacimiento,
         role: user.role,
         estado: user.estado,
-        tags: user.tags
+        tags: user.tags,
+        idioma: user.idioma
       }
     });
   } catch (error) {
@@ -141,5 +155,25 @@ export const getCurrentUser = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener usuario:', error);
     res.status(500).json({ message: 'Error al obtener usuario', error: error.message });
+  }
+};
+
+/**
+ * GET /api/auth/registro-whatsapp — a dónde y qué escribir para terminar el
+ * registro quien no vive en Buenos Aires. El número y el mensaje salen de
+ * Ajustes; las variables ({nombre}, {ciudad}) las completa el front.
+ */
+export const getRegistroWhatsapp = async (req, res) => {
+  try {
+    const settings = await Settings.getSettings();
+    res.json({
+      completarPorWhatsapp:
+        req.user.role === 'participant' &&
+        ((Boolean(req.user.residencia) && req.user.residencia !== 'buenos_aires') || req.user.tipoDocumento === 'pasaporte'),
+      numero: settings.whatsappNumero,
+      mensaje: settings.whatsappRegistroMensaje
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al buscar el contacto de WhatsApp', error: error.message });
   }
 };

@@ -4,6 +4,12 @@ import User from '../models/User.model.js';
 import { calculateOccurrences } from '../utils/generateOccurrences.js';
 import { participantActivityAccessDenied } from '../utils/participantActivityAccess.js';
 import { uploadToCloudinary } from '../middleware/upload.middleware.js';
+import {
+  notifyInscriptionConfirmed,
+  notifyPaymentRejected,
+  notifyWaitlistPromoted,
+  buildWaitlistPromotedEmail
+} from '../utils/notifications.js';
 
 const isPaidActivity = (activity) => activity && activity.esGratuita === false;
 
@@ -269,7 +275,11 @@ export const createInscription = async (req, res) => {
           existingInscription.pago = undefined;
         }
         await existingInscription.save();
-        
+
+        if (nuevoEstado === 'aceptada') {
+          await notifyInscriptionConfirmed(existingInscription);
+        }
+
         return res.json({
           message: inscriptionResultMessage(activity, nuevoEstado, needsComprobante),
           inscription: existingInscription
@@ -316,6 +326,10 @@ export const createInscription = async (req, res) => {
 
     await inscription.save();
 
+    if (estadoInicial === 'aceptada') {
+      await notifyInscriptionConfirmed(inscription);
+    }
+
     res.status(201).json({
       message: inscriptionResultMessage(activity, estadoInicial, needsComprobante),
       inscription
@@ -338,6 +352,7 @@ async function isCupoFull(activity, fechaInscripcion, fechaEnd) {
   });
   return inscriptionsCount >= activity.cupo;
 }
+
 
 export const getMyInscriptions = async (req, res) => {
   try {
@@ -409,10 +424,16 @@ export const countAcceptedInscriptionsLast30Days = async (req, res) => {
 
 export const getPendingPaymentInscriptions = async (req, res) => {
   try {
-    const inscriptions = await Inscription.find({
+    // ?activityId= acota la revisión a una sola actividad (pantalla de
+    // inscripciones por actividad); sin él, revisa todo como siempre.
+    const { activityId } = req.query;
+    const filtro = {
       'pago.estadoPago': 'pendiente',
-      'pago.comprobante.url': { $exists: true, $ne: '' }
-    })
+      'pago.comprobante.url': { $exists: true, $ne: '' },
+    };
+    if (activityId) filtro.activityId = activityId;
+
+    const inscriptions = await Inscription.find(filtro)
       .populate('userId', 'nombre apellido email telefono')
       .populate('activityId', 'titulo fecha hora precio moneda esGratuita tipo')
       .sort({ fechaInscripcion: -1 });
@@ -550,6 +571,38 @@ export const rejectInscription = async (req, res) => {
   }
 };
 
+/* Estados a los que el admin puede sacar a alguien de la lista de espera. */
+const SALIDAS_DE_ESPERA = ['pendiente', 'aceptada'];
+
+/** Vista previa del mail que recibiría alguien al salir de la lista de espera con `estado`. */
+export const previewWaitlistEmail = async (req, res) => {
+  try {
+    const { estado } = req.query;
+    if (!SALIDAS_DE_ESPERA.includes(estado)) {
+      return res.status(400).json({ message: 'Estado inválido' });
+    }
+
+    const inscription = await Inscription.findById(req.params.id);
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    if (inscription.estado !== 'en_espera') {
+      return res.status(400).json({ message: 'La inscripción no está en lista de espera' });
+    }
+
+    /* Se arma con el estado nuevo sin guardarlo: el texto cambia si queda
+       confirmada o pendiente. */
+    const email = await buildWaitlistPromotedEmail({ ...inscription.toObject(), estado });
+    if (!email) {
+      return res.status(404).json({ message: 'No se pudo armar el mail' });
+    }
+    res.json({ email });
+  } catch (error) {
+    console.error('Error al armar la vista previa del mail:', error);
+    res.status(500).json({ message: 'Error al armar la vista previa del mail', error: error.message });
+  }
+};
+
 export const updateInscriptionStatus = async (req, res) => {
   try {
     const { estado } = req.body;
@@ -591,17 +644,30 @@ export const updateInscriptionStatus = async (req, res) => {
     }
 
     // Actualizar estado y fechas relacionadas
+    /* Sacar a alguien de la lista de espera es decisión del admin, y el mail
+       también: sólo sale si lo pidió (`notificar`), y es el de «se liberó un
+       lugar», no el de confirmación. */
+    const saleDeEspera = inscription.estado === 'en_espera' && SALIDAS_DE_ESPERA.includes(estado);
+
     inscription.estado = estado;
-    
+
     if (estado === 'cancelada' && !inscription.fechaCancelacion) {
       inscription.fechaCancelacion = new Date();
     }
-    
+
     if (estado !== 'aceptada') {
       inscription.fechaAprobacion = null;
     }
 
     await inscription.save();
+
+    if (saleDeEspera) {
+      if (req.body.notificar === true) {
+        await notifyWaitlistPromoted(inscription);
+      }
+    } else if (estado === 'aceptada') {
+      await notifyInscriptionConfirmed(inscription);
+    }
 
     res.json({
       message: `Estado actualizado a ${estado}`,
@@ -656,6 +722,8 @@ export const approvePayment = async (req, res) => {
     inscription.fechaAprobacion = new Date();
     await inscription.save();
 
+    await notifyInscriptionConfirmed(inscription);
+
     res.json({
       message: 'Comprobante aprobado. Inscripción confirmada.',
       inscription
@@ -686,6 +754,8 @@ export const rejectPayment = async (req, res) => {
     inscription.estado = 'pendiente';
     inscription.fechaAprobacion = null;
     await inscription.save();
+
+    await notifyPaymentRejected(inscription, inscription.pago.motivoRechazo);
 
     res.json({
       message: 'Comprobante rechazado. El participante puede volver a subir uno nuevo.',
@@ -810,3 +880,44 @@ export const getUserActivityInscriptions = async (req, res) => {
   }
 };
 
+
+/**
+ * PUT /api/inscriptions/:id/attendance — el equipo marca si la persona vino.
+ * Body: { asistencia: 'vino' | 'falto' | null } (null borra la marca).
+ * Sólo inscripciones aceptadas: a quien no estaba confirmado no se le toma
+ * asistencia, y así «inscriptos vs. asistentes» compara lo mismo.
+ */
+export const updateInscriptionAttendance = async (req, res) => {
+  try {
+    const { asistencia } = req.body;
+    if (![null, 'vino', 'falto'].includes(asistencia ?? null)) {
+      return res.status(400).json({ message: 'Asistencia inválida' });
+    }
+
+    const inscription = await Inscription.findById(req.params.id);
+    if (!inscription) {
+      return res.status(404).json({ message: 'Inscripción no encontrada' });
+    }
+    if (inscription.estado !== 'aceptada') {
+      return res.status(400).json({ message: 'Sólo se toma asistencia de inscripciones aceptadas' });
+    }
+
+    if (asistencia) {
+      inscription.asistencia = asistencia;
+      inscription.asistenciaMarcadaEn = new Date();
+      inscription.asistenciaMarcadaPor = req.user._id;
+    } else {
+      inscription.asistencia = undefined;
+      inscription.asistenciaMarcadaEn = undefined;
+      inscription.asistenciaMarcadaPor = undefined;
+    }
+    await inscription.save();
+
+    res.json({
+      message: 'Asistencia actualizada',
+      inscription: { _id: inscription._id, asistencia: inscription.asistencia ?? null }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar la asistencia', error: error.message });
+  }
+};

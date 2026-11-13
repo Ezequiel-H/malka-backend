@@ -12,7 +12,9 @@ const validRegister = {
   apellido: 'García',
   dni: '33444555',
   telefono: '+5411999888777',
-  fechaNacimiento: '1990-05-15'
+  fechaNacimiento: '1990-05-15',
+  nacionalidad: 'ar',
+  residencia: 'buenos_aires'
 };
 
 beforeAll(connectMemoryMongo);
@@ -30,6 +32,73 @@ describe('POST /api/auth/register', () => {
     const saved = await User.findOne({ email: validRegister.email.toLowerCase() });
     expect(saved.fechaNacimiento).toBe('1990-05-15');
     expect(typeof saved.fechaNacimiento).toBe('string');
+  });
+
+  it('guarda nacionalidad y dónde vive; fuera de Buenos Aires pide la ciudad', async () => {
+    const sinCiudad = await request(app)
+      .post('/api/auth/register')
+      .send({ ...validRegister, residencia: 'exterior' });
+    expect(sinCiudad.status).toBe(400);
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ ...validRegister, nacionalidad: 'IL', residencia: 'exterior', ciudad: 'Tel Aviv' })
+      .expect(201);
+    const saved = await User.findOne({ email: validRegister.email.toLowerCase() });
+    expect(saved).toMatchObject({ nacionalidad: 'IL', residencia: 'exterior', ciudad: 'Tel Aviv' });
+
+    const wa = await request(app)
+      .get('/api/auth/registro-whatsapp')
+      .set('Authorization', `Bearer ${res.body.token}`)
+      .expect(200);
+    expect(wa.body.completarPorWhatsapp).toBe(true);
+    expect(wa.body.mensaje).toContain('{nombre}');
+  });
+
+  it('en Buenos Aires no hace falta WhatsApp ni ciudad', async () => {
+    const res = await request(app).post('/api/auth/register').send(validRegister).expect(201);
+    const saved = await User.findOne({ email: validRegister.email.toLowerCase() });
+    expect(saved.nacionalidad).toBe('AR');
+    expect(saved.ciudad).toBeUndefined();
+    const wa = await request(app)
+      .get('/api/auth/registro-whatsapp')
+      .set('Authorization', `Bearer ${res.body.token}`)
+      .expect(200);
+    expect(wa.body.completarPorWhatsapp).toBe(false);
+  });
+
+  it('guarda el idioma en el registro y lo deja cambiar desde el perfil', async () => {
+    const res = await request(app).post('/api/auth/register').send({ ...validRegister, idioma: 'he' }).expect(201);
+    expect(res.body.user.idioma).toBe('he');
+    const token = `Bearer ${res.body.token}`;
+    const cambio = await request(app).patch('/api/users/me').set('Authorization', token).send({ idioma: 'en' }).expect(200);
+    expect(cambio.body.user.idioma).toBe('en');
+    await request(app).patch('/api/users/me').set('Authorization', token).send({ idioma: 'fr' }).expect(400);
+  });
+
+  it('acepta pasaporte, y con pasaporte el registro sigue por WhatsApp', async () => {
+    const mal = await request(app).post('/api/auth/register').send({ ...validRegister, tipoDocumento: 'pasaporte', dni: '12' });
+    expect(mal.status).toBe(400);
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ ...validRegister, tipoDocumento: 'pasaporte', dni: 'ab 123456' })
+      .expect(201);
+    const saved = await User.findOne({ email: validRegister.email.toLowerCase() });
+    expect(saved).toMatchObject({ tipoDocumento: 'pasaporte', dni: 'AB123456' });
+    const wa = await request(app).get('/api/auth/registro-whatsapp').set('Authorization', `Bearer ${res.body.token}`).expect(200);
+    expect(wa.body.completarPorWhatsapp).toBe(true);
+  });
+
+  it('un DNI con letras no pasa', async () => {
+    const res = await request(app).post('/api/auth/register').send({ ...validRegister, dni: 'AB123456' });
+    expect(res.status).toBe(400);
+  });
+
+  it('pide nacionalidad y residencia', async () => {
+    const { nacionalidad, residencia, ...sinDatos } = validRegister;
+    const res = await request(app).post('/api/auth/register').send(sinDatos);
+    expect(res.status).toBe(400);
+    expect(nacionalidad && residencia).toBeTruthy();
   });
 
   it('rejects invalid payload', async () => {

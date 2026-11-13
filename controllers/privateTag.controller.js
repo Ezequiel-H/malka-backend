@@ -40,7 +40,7 @@ export const createPrivateTag = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { nombre, descripcion, color } = req.body;
+    const { nombre, descripcion, color, icono } = req.body;
     const nombreNormalizado = nombre.toLowerCase().trim();
 
     const tagExistente = await PrivateTag.findOne({ nombre: nombreNormalizado });
@@ -52,6 +52,7 @@ export const createPrivateTag = async (req, res) => {
       nombre: nombreNormalizado,
       descripcion: descripcion || '',
       color: color || '#3B82F6',
+      icono: icono || '',
       activa: true
     });
 
@@ -78,7 +79,7 @@ export const updatePrivateTag = async (req, res) => {
       return res.status(404).json({ message: 'Tag no encontrada' });
     }
 
-    const { nombre, descripcion, color, activa } = req.body;
+    const { nombre, descripcion, color, activa, icono } = req.body;
 
     if (nombre && nombre.toLowerCase().trim() !== tag.nombre) {
       const nombreNormalizado = nombre.toLowerCase().trim();
@@ -94,6 +95,7 @@ export const updatePrivateTag = async (req, res) => {
 
     if (descripcion !== undefined) tag.descripcion = descripcion;
     if (color !== undefined) tag.color = color;
+    if (icono !== undefined) tag.icono = icono;
     if (activa !== undefined) tag.activa = activa;
 
     await tag.save();

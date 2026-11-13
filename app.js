@@ -11,7 +11,14 @@ import inscriptionRoutes from './routes/inscription.routes.js';
 import tagRoutes from './routes/tag.routes.js';
 import privateTagRoutes from './routes/privateTag.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import actividadesResumenRoutes from './routes/actividadesResumen.routes.js';
+import hoyRoutes from './routes/hoy.routes.js';
+import inicioRoutes from './routes/inicio.routes.js';
+import meRoutes from './routes/me.routes.js';
+import gastoRoutes from './routes/gasto.routes.js';
+import historialRoutes from './routes/historial.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import pushRoutes from './routes/push.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,12 +39,19 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/me', meRoutes);
   app.use('/api/activities', activityRoutes);
   app.use('/api/inscriptions', inscriptionRoutes);
   app.use('/api/tags', tagRoutes);
   app.use('/api/tags-privados', privateTagRoutes);
+  app.use('/api/admin/actividades-resumen', actividadesResumenRoutes);
+  app.use('/api/admin/hoy', hoyRoutes);
+  app.use('/api/admin/inicio', inicioRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/gastos', gastoRoutes);
+  app.use('/api/historial', historialRoutes);
   app.use('/api/settings', settingsRoutes);
+  app.use('/api/push', pushRoutes);
 
   app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });

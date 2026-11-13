@@ -5,7 +5,9 @@ import { participantCanViewActivity, participantActivityAccessDenied } from '../
 import { validationResult } from 'express-validator';
 import ExcelJS from 'exceljs';
 import { calculateNextOccurrence, calculateOccurrences } from '../utils/generateOccurrences.js';
+import { notifyNewActivity } from '../utils/activityPush.js';
 import { attachInstruccionesPagoResueltas } from '../utils/paymentInstructions.js';
+import { ageOnDate, todayCalendarDateInZone } from '../utils/calendarDate.js';
 
 // Helper function to convert date string (YYYY-MM-DD) to Date object
 // Simple conversion: just use the year, month, day as-is, no timezone conversion
@@ -90,8 +92,10 @@ export const createActivity = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // `notificarParticipantes` es una decisión del admin, no un campo de la actividad.
+    const { notificarParticipantes, ...body } = req.body;
     const activityData = {
-      ...req.body,
+      ...body,
       organizadorId: req.user._id
     };
 
@@ -108,6 +112,11 @@ export const createActivity = async (req, res) => {
 
     const activity = new Activity(activityData);
     await activity.save();
+
+    // Avisar a los participantes es opcional: lo elige el admin al publicar.
+    if (activity.estado === 'publicada' && notificarParticipantes === true) {
+      await notifyNewActivity(activity);
+    }
 
     res.status(201).json({
       message: 'Actividad creada exitosamente',
@@ -537,7 +546,7 @@ export const updateActivity = async (req, res) => {
     }
 
     // Parse dates as simple dates (no timezone conversion)
-    const updateData = { ...req.body };
+    const { notificarParticipantes, ...updateData } = req.body;
     if (updateData.fecha) {
       updateData.fecha = parseSimpleDate(updateData.fecha);
     }
@@ -548,8 +557,16 @@ export const updateActivity = async (req, res) => {
       updateData.recurrence.endDate = parseSimpleDate(updateData.recurrence.endDate);
     }
 
+    const estabaPublicada = activity.estado === 'publicada';
+
     Object.assign(activity, updateData);
     await activity.save();
+
+    // Pasar de borrador a publicada es «actividad nueva» para participantes,
+    // si el admin eligió avisarles.
+    if (!estabaPublicada && activity.estado === 'publicada' && notificarParticipantes === true) {
+      await notifyNewActivity(activity);
+    }
 
     res.json({
       message: 'Actividad actualizada exitosamente',
@@ -601,23 +618,105 @@ export const exportInscriptionsToExcel = async (req, res) => {
       query.fecha = { $gte: fechaStart, $lte: fechaEnd };
     }
 
-    const inscriptions = await Inscription.find(query)
-      .populate('userId', 'nombre apellido email telefono tags restriccionesAlimentarias')
+    // Format dates for filename
+    const formatDateForFilename = (date) => {
+      if (!date) return 'sin-fecha';
+      const d = new Date(date);
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    /* Exportación selectiva: estados y columnas por query param, con los
+       defaults iguales al comportamiento histórico. */
+    const ESTADO_LABELS = {
+      aceptada: 'Aceptada',
+      pendiente: 'Pendiente',
+      en_espera: 'En espera',
+      cancelada: 'Cancelada',
+    };
+    const PAGO_LABELS = { aprobado: 'Aprobado', pendiente: 'En revisión', rechazado: 'Rechazado' };
+    const hoyISO = todayCalendarDateInZone();
+    const EXPORT_COLUMNS = {
+      nombre: { header: 'Nombre', width: 20, value: (i) => i.userId?.nombre || '' },
+      apellido: { header: 'Apellido', width: 20, value: (i) => i.userId?.apellido || '' },
+      email: { header: 'Email', width: 30, value: (i) => i.userId?.email || '' },
+      telefono: { header: 'Teléfono', width: 18, value: (i) => i.userId?.telefono || '' },
+      dni: { header: 'DNI', width: 14, value: (i) => i.userId?.dni || '' },
+      // La edad al día de la exportación, no la fecha de nacimiento.
+      edad: { header: 'Edad', width: 8, value: (i) => ageOnDate(i.userId?.fechaNacimiento, hoyISO) ?? '' },
+      restricciones: {
+        header: 'Restricciones Alimenticias',
+        width: 40,
+        value: (i) => (i.userId?.restriccionesAlimentarias || []).join(', '),
+      },
+      tags: { header: 'Tags', width: 30, value: (i) => (i.userId?.tags || []).join(', ') },
+      estado: { header: 'Estado', width: 14, value: (i) => ESTADO_LABELS[i.estado] || i.estado },
+      fechaEvento: {
+        header: 'Fecha del evento',
+        width: 16,
+        value: (i) => formatDateForFilename(i.fecha),
+      },
+      pago: {
+        header: 'Pago',
+        width: 14,
+        value: (i) => (i.pago?.comprobante?.url ? PAGO_LABELS[i.pago.estadoPago] || i.pago.estadoPago : ''),
+      },
+      monto: {
+        header: 'Monto',
+        width: 12,
+        value: (i) => (i.pago?.montoEsperado ?? ''),
+      },
+      fechaInscripcion: {
+        header: 'Inscripto el',
+        width: 16,
+        value: (i) => (i.fechaInscripcion ? formatDateForFilename(i.fechaInscripcion) : ''),
+      },
+    };
+    const DEFAULT_COLUMNS = ['nombre', 'apellido', 'email', 'telefono', 'restricciones', 'tags'];
+
+    const parseList = (raw) =>
+      String(raw || '')
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+
+    const estados = parseList(req.query.estados).filter((e) => ESTADO_LABELS[e]);
+
+    // El orden de las columnas es el que llega: la persona lo arma arrastrando.
+    let columnas = [...new Set(parseList(req.query.columnas).filter((c) => EXPORT_COLUMNS[c]))];
+    if (columnas.length === 0) columnas = DEFAULT_COLUMNS;
+
+    const todas = await Inscription.find(query)
+      .populate('userId', 'nombre apellido email telefono dni fechaNacimiento tags restriccionesAlimentarias')
       .sort({ fechaInscripcion: -1 });
+    const inscriptions = estados.length > 0 ? todas.filter((i) => estados.includes(i.estado)) : todas;
+
+    /* `formato=json` devuelve lo mismo que iría al Excel (columnas y filas ya
+       resueltas), más cuántas hay en cada estado: así la vista previa, el CSV
+       y «Copiar» del modal salen idénticos a la planilla. */
+    if (req.query.formato === 'json') {
+      const porEstado = Object.fromEntries(Object.keys(ESTADO_LABELS).map((e) => [e, todas.filter((i) => i.estado === e).length]));
+      return res.json({
+        columnas: columnas.map((clave) => ({ clave, header: EXPORT_COLUMNS[clave].header })),
+        filas: inscriptions.map((i) => columnas.map((clave) => EXPORT_COLUMNS[clave].value(i))),
+        // El estado de cada fila, para que el modal filtre sin volver a pedir.
+        estados: inscriptions.map((i) => i.estado),
+        total: inscriptions.length,
+        porEstado,
+      });
+    }
 
     // Create Excel workbook
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Inscriptos');
 
-    // Define columns
-    worksheet.columns = [
-      { header: 'Nombre', key: 'nombre', width: 20 },
-      { header: 'Apellido', key: 'apellido', width: 20 },
-      { header: 'Email', key: 'email', width: 30 },
-      { header: 'Teléfono', key: 'telefono', width: 15 },
-      { header: 'Restricciones Alimenticias', key: 'restriccionesAlimentarias', width: 40 },
-      { header: 'Tags', key: 'tags', width: 30 }
-    ];
+    worksheet.columns = columnas.map((clave) => ({
+      header: EXPORT_COLUMNS[clave].header,
+      key: clave,
+      width: EXPORT_COLUMNS[clave].width,
+    }));
 
     // Style header row
     worksheet.getRow(1).font = { bold: true };
@@ -628,27 +727,14 @@ export const exportInscriptionsToExcel = async (req, res) => {
     };
 
     // Add data rows
-    inscriptions.forEach(inscription => {
-      const user = inscription.userId;
-      worksheet.addRow({
-        nombre: user.nombre || '',
-        apellido: user.apellido || '',
-        email: user.email || '',
-        telefono: user.telefono || '',
-        restriccionesAlimentarias: (user.restriccionesAlimentarias || []).join(', ') || '',
-        tags: (user.tags || []).join(', ')
+    inscriptions.forEach((inscription) => {
+      const row = {};
+      columnas.forEach((clave) => {
+        row[clave] = EXPORT_COLUMNS[clave].value(inscription);
       });
+      worksheet.addRow(row);
     });
 
-    // Format dates for filename
-    const formatDateForFilename = (date) => {
-      if (!date) return 'sin-fecha';
-      const d = new Date(date);
-      const year = d.getUTCFullYear();
-      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(d.getUTCDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
 
     const formatDateTimeForFilename = (date) => {
       const d = new Date(date);

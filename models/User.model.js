@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+import { TIPOS_DOCUMENTO } from '../utils/documento.js';
+
+export const RESIDENCIAS = ['buenos_aires', 'argentina', 'exterior'];
+export const IDIOMAS = ['es', 'en', 'he'];
+
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -85,6 +90,44 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true,
     match: [/^\d{4}-\d{2}-\d{2}$/, 'La fecha de nacimiento debe tener formato YYYY-MM-DD']
+  },
+  /* DNI o pasaporte: el número va en `dni`. Quien usa pasaporte termina el
+     registro por WhatsApp, igual que quien vive fuera de Buenos Aires. */
+  tipoDocumento: {
+    type: String,
+    enum: TIPOS_DOCUMENTO,
+    default: 'dni'
+  },
+  /* El Panel a medida (sólo equipo): bloques, orden, ancho y opciones. Lo
+     valida utils/inicioPanel.js; sin guardar, vale el de siempre. */
+  inicioPanel: {
+    type: mongoose.Schema.Types.Mixed,
+    default: undefined,
+    select: false
+  },
+  /* Código de país ISO (AR, IL, UY…): el nombre se arma en el front en el
+     idioma de quien lo mira. */
+  nacionalidad: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    match: [/^[A-Z]{2}$/, 'Nacionalidad inválida']
+  },
+  /* Dónde vive. Quien no vive en Buenos Aires termina el registro por
+     WhatsApp: el equipo le pide ahí lo que haga falta. */
+  residencia: {
+    type: String,
+    enum: RESIDENCIAS
+  },
+  ciudad: {
+    type: String,
+    trim: true,
+    maxlength: 80
+  },
+  /* En qué idioma ve la plataforma. Sin dato = castellano. */
+  idioma: {
+    type: String,
+    enum: IDIOMAS
   }
 }, {
   timestamps: true

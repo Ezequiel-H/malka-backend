@@ -38,6 +38,18 @@ const inscriptionSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  /* Si la persona vino de verdad. Sin marcar = no se sabe (cuenta como que
+     participó, porque estaba aceptada); «falto» la saca de las métricas de
+     participación. Lo marca el equipo desde las inscripciones de la actividad. */
+  asistencia: {
+    type: String,
+    enum: ['vino', 'falto']
+  },
+  asistenciaMarcadaEn: Date,
+  asistenciaMarcadaPor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   pago: {
     comprobante: {
       url: String,

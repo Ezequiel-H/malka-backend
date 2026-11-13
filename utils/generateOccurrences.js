@@ -41,28 +41,11 @@ export const calculateOccurrences = (activity, daysAhead = 30, startDate = null)
 
       case 'weekly':
         if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
-          // Encontrar el próximo día de la semana válido
-          const daysOfWeek = recurrence.daysOfWeek.sort((a, b) => a - b);
-          let found = false;
-          const isStartDate = currentDate.getTime() === start.getTime();
-          
-          for (const dayOfWeek of daysOfWeek) {
-            const daysUntil = (dayOfWeek - currentDate.getDay() + 7) % 7;
-            if (daysUntil > 0 || (daysUntil === 0 && isStartDate)) {
-              nextDate = new Date(currentDate);
-              nextDate.setDate(nextDate.getDate() + (daysUntil === 0 ? 0 : daysUntil));
-              found = true;
-              break;
-            }
-          }
-          
-          if (!found) {
-            // Si no hay más días esta semana, ir al primero de la próxima semana
-            const firstDay = daysOfWeek[0];
-            const daysUntil = (firstDay - currentDate.getDay() + 7) % 7;
-            nextDate = new Date(currentDate);
-            nextDate.setDate(nextDate.getDate() + (daysUntil || 7));
-          }
+          // El día válido más cercano. currentDate cuenta: es el inicio o el
+          // día siguiente a la ocurrencia anterior.
+          const daysUntil = Math.min(...recurrence.daysOfWeek.map((d) => (d - currentDate.getDay() + 7) % 7));
+          nextDate = new Date(currentDate);
+          nextDate.setDate(nextDate.getDate() + daysUntil);
         } else if (recurrence.dayOfWeek !== undefined) {
           // Compatibilidad con el formato antiguo
           const daysUntil = (recurrence.dayOfWeek - currentDate.getDay() + 7) % 7;
@@ -156,26 +139,10 @@ export const calculateNextOccurrence = (activity, fromDate = null) => {
 
     case 'weekly':
       if (recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
-        const daysOfWeek = recurrence.daysOfWeek.sort((a, b) => a - b);
-        let found = false;
-        
-        for (const dayOfWeek of daysOfWeek) {
-          const daysUntil = (dayOfWeek - currentDate.getDay() + 7) % 7;
-          if (daysUntil > 0) {
-            nextDate = new Date(currentDate);
-            nextDate.setDate(nextDate.getDate() + daysUntil);
-            found = true;
-            break;
-          }
-        }
-        
-        if (!found) {
-          // Si no hay más días esta semana, ir al primero de la próxima semana
-          const firstDay = daysOfWeek[0];
-          const daysUntil = (firstDay - currentDate.getDay() + 7) % 7;
-          nextDate = new Date(currentDate);
-          nextDate.setDate(nextDate.getDate() + (daysUntil || 7));
-        }
+        // El día válido más cercano después de currentDate (si coincide, a la semana siguiente).
+        const daysUntil = Math.min(...recurrence.daysOfWeek.map((d) => (d - currentDate.getDay() + 7) % 7 || 7));
+        nextDate = new Date(currentDate);
+        nextDate.setDate(nextDate.getDate() + daysUntil);
       } else if (recurrence.dayOfWeek !== undefined) {
         // Compatibilidad con el formato antiguo
         const daysUntil = (recurrence.dayOfWeek - currentDate.getDay() + 7) % 7;

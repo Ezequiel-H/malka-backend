@@ -1,4 +1,6 @@
 import express from 'express';
+import { IDIOMAS, RESIDENCIAS } from '../models/User.model.js';
+import { TIPOS_DOCUMENTO, validarDocumento } from '../utils/documento.js';
 import { body } from 'express-validator';
 import {
   getPendingUsers,
@@ -21,7 +23,8 @@ const router = express.Router();
 const updateUserValidation = [
   body('nombre').optional().notEmpty().trim(),
   body('apellido').optional().notEmpty().trim(),
-  body('dni').optional().trim().matches(/^\d{7,10}$/),
+  body('tipoDocumento').optional().isIn(TIPOS_DOCUMENTO),
+  body('dni').optional().custom(validarDocumento),
   body('telefono').optional().trim(),
   body('tags').optional().isArray(),
   body('tagsPrivados').optional().isArray(),
@@ -33,7 +36,8 @@ const updateUserValidation = [
 const myProfileValidation = [
   body('nombre').optional().notEmpty().trim(),
   body('apellido').optional().notEmpty().trim(),
-  body('dni').optional().trim().matches(/^\d{7,10}$/),
+  body('tipoDocumento').optional().isIn(TIPOS_DOCUMENTO),
+  body('dni').optional().custom(validarDocumento),
   body('telefono').optional().trim().isLength({ min: 8, max: 22 }),
   body('fechaNacimiento')
     .optional()
@@ -44,7 +48,11 @@ const myProfileValidation = [
     }),
   body('tags').optional().isArray(),
   body('restriccionesAlimentarias').optional().isArray(),
-  body('comoSeEntero').optional().trim()
+  body('comoSeEntero').optional().trim(),
+  body('nacionalidad').optional().trim().toUpperCase().isISO31661Alpha2(),
+  body('residencia').optional().isIn(RESIDENCIAS),
+  body('ciudad').optional().trim().isLength({ max: 80 }),
+  body('idioma').optional().isIn(IDIOMAS)
 ];
 
 const adminSetPasswordValidation = [body('password').isLength({ min: 6 }).withMessage('La contraseña debe tener al menos 6 caracteres')];

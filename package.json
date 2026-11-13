@@ -11,7 +11,9 @@
     "db:init": "node scripts/initDb.js",
     "db:unset-categorias-artisticas": "node scripts/unsetCategoriasArtisticas.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "email:test": "node scripts/emailTest.js",
+    "push:keys": "web-push generate-vapid-keys"
   },
   "keywords": [
     "events",
@@ -31,7 +33,9 @@
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.7.2",
     "mongoose": "^8.0.3",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^10.2.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "mongodb-memory-server": "^9.5.0",
