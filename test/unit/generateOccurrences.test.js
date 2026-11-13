@@ -102,6 +102,23 @@ describe('calculateOccurrences', () => {
   });
 });
 
+describe('semanal con varios días', () => {
+  const martesYJueves = { tipo: 'recurrente', hora: '19:00', recurrence: { frequency: 'weekly', daysOfWeek: [2, 4], hora: '19:00' } };
+  const dias = (occ) => occ.map((o) => `${o.fecha.getMonth() + 1}/${o.fecha.getDate()}`);
+
+  it('no se saltea días: de martes y jueves contando desde un jueves salen todos', () => {
+    // Jueves 12 de noviembre de 2026
+    const occ = calculateOccurrences(martesYJueves, 14, new Date(2026, 10, 12));
+    expect(dias(occ)).toEqual(['11/12', '11/17', '11/19', '11/24', '11/26']);
+  });
+
+  it('el próximo es el día más cercano, no el primero de la lista', () => {
+    // Miércoles 11 de noviembre: lo próximo es el jueves 12, no el martes 17
+    const next = calculateNextOccurrence(martesYJueves, new Date(2026, 10, 11));
+    expect(`${next.getMonth() + 1}/${next.getDate()}`).toBe('11/12');
+  });
+});
+
 describe('calculateNextOccurrence', () => {
   it('returns null for non-recurrent activity', () => {
     expect(calculateNextOccurrence({ tipo: 'unica' })).toBeNull();
