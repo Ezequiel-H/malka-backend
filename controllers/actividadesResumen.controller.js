@@ -126,6 +126,9 @@ export const getActividadesResumen = async (req, res) => {
       const [proximo = null] = encuentrosEntre(a, hoy, DIAS_ADELANTE, { primero: true });
       return { a, semana, proximo };
     });
+    /* Primero lo que viene, por fecha; lo que ya pasó queda al final (el
+       sort es estable, así que entre ellas siguen de la más nueva a la más vieja). */
+    porActividad.sort((x, y) => (x.proximo ? 0 : 1) - (y.proximo ? 0 : 1) || (x.proximo && y.proximo ? x.proximo.dia.localeCompare(y.proximo.dia) : 0));
 
     const diasQueImportan = new Set(porActividad.flatMap(({ semana, proximo }) => [...semana.map((e) => e.dia), ...(proximo ? [proximo.dia] : [])]));
     const dias = [...diasQueImportan].sort();
