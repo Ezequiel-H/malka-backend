@@ -14,6 +14,7 @@ import adminRoutes from './routes/admin.routes.js';
 import actividadesResumenRoutes from './routes/actividadesResumen.routes.js';
 import hoyRoutes from './routes/hoy.routes.js';
 import inicioRoutes from './routes/inicio.routes.js';
+import meRoutes from './routes/me.routes.js';
 import gastoRoutes from './routes/gasto.routes.js';
 import historialRoutes from './routes/historial.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
@@ -38,6 +39,7 @@ export function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/me', meRoutes);
   app.use('/api/activities', activityRoutes);
   app.use('/api/inscriptions', inscriptionRoutes);
   app.use('/api/tags', tagRoutes);
